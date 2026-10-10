@@ -218,14 +218,14 @@
       days.push({ date: d.toISOString().slice(0, 10), weekday: d.getUTCDay(), closed: DEMO.closedWeekdays.includes(d.getUTCDay()) });
     }
     return { spaceName: DEMO.spaceName, daysAhead: DEMO.daysAhead, floor: DEMO.floor, room: DEMO.room, desks: DEMO.desks,
-      hasPhotos: !!window.DEMO_PHOTOS, days, booked: JSON.parse(JSON.stringify(demoBooked)) };
+      hasPhotos: true, days, booked: JSON.parse(JSON.stringify(demoBooked)) };
   }
   function api(fn, arg, ok, fail) {
     if (LIVE) {
       let req;
       if (fn === 'getSetup') req = fetch(API_URL + '?action=setup');
       else if (fn === 'getDeskPhoto') req = fetch(API_URL + '?action=photo&desk=' + encodeURIComponent(arg));
-      else if (fn === 'book') req = fetch(API_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(Object.assign({ action: 'book' }, arg)) });
+      else if (fn === 'book') req = fetch(API_URL + '?action=book&data=' + encodeURIComponent(JSON.stringify(arg)));
       return req.then(r => r.json())
         .then(res => res.ok ? ok(fn === 'getDeskPhoto' ? res.data.src : res.data) : fail(new Error(res.error)))
         .catch(() => fail(new Error('No connection. Check your internet and try again.')));
@@ -245,7 +245,7 @@
   /* ---------- Loading ---------- */
   function load() {
     $('demoNote').hidden = !!LIVE;
-    api('getSetup', undefined, s => { state.setup = s; afterLoad(); }, err => {
+    api('getSetup', undefined, s => { s.hasPhotos = true; state.setup = s; afterLoad(); }, err => {
       const el = $('loading');
       el.hidden = false; el.className = 'hint loaderr';
       el.textContent = 'The booking page couldn’t load: ' + ((err && err.message) || err || 'unknown error') + '. Refresh the page to try again.';
@@ -398,12 +398,15 @@
     if (state.setup.hasPhotos && !(d.name in photos)) loadPhoto(d.name);
   }
 
+  // Desk photos live next to this page: "Desk B2" -> desk-b2.jpg
+  const photoUrl = name => name.toLowerCase().replace(/\s+/g, '-') + '.jpg';
   function loadPhoto(name) {
     if (name in photos) return;
     photos[name] = undefined; // loading
-    api('getDeskPhoto', name,
-      src => { photos[name] = src || null; if (state.viewing === name) renderPreview(); },
-      () => { photos[name] = null; if (state.viewing === name) renderPreview(); });
+    const img = new Image();
+    img.onload = () => { photos[name] = photoUrl(name); if (state.viewing === name) renderPreview(); };
+    img.onerror = () => { photos[name] = null; if (state.viewing === name) renderPreview(); };
+    img.src = photoUrl(name);
   }
 
   function chair(d) {
