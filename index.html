@@ -1,10 +1,8 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+<base target="_top">
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Out of Office – Book a desk</title>
-<meta name="description" content="Book a desk at Out of Office coworking, Thessaloniki.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Figtree:wght@400;500;600&display=swap" rel="stylesheet">
@@ -137,7 +135,7 @@
   <h1>Book a desk</h1>
   <p class="intro">Pick your days, choose a desk on the floor plan, and you’ll get a confirmation by email.</p>
 
-  <p class="demo" id="demoNote" hidden>Preview mode: this page is open outside Google Apps Script, so it shows sample data. Bookings aren’t saved and no emails are sent. </p>
+  <p class="demo" id="demoNote" hidden>Preview mode: this page is open outside Google Apps Script, so it shows sample data. Bookings aren’t saved and no emails are sent. Your real booking link comes from Deploy in Apps Script.</p>
   <p class="hint" id="loading">Loading free desks…</p>
 
   <div id="app" hidden>
@@ -205,9 +203,7 @@
   const short = key => fmt(key, { weekday: 'short', day: 'numeric', month: 'short' });
 
   /* ---------- Server calls (with a preview mode outside Apps Script) ---------- */
-  // Your Google Apps Script link. Bookings, emails and photos all go through it.
-  const API_URL = 'https://script.google.com/macros/s/AKfycbwbfGd_rUgxsdeDW8awwt_gPMYnjUozJnn2T_yu4o11qR_xCQgL9h3O6o5nH7EAdhda/exec';
-  const LIVE = !!API_URL;
+  const LIVE = typeof google !== 'undefined' && google.script && google.script.run;
   // Copy of the settings from Code.gs, used ONLY in preview mode. The live page always uses Code.gs.
   const DEMO = {"spaceName":"Out of Office","daysAhead":30,"closedWeekdays":[0,6],"floor":{"width":1000,"height":468},"room":{"walls":[[40,40,465,40],[606,40,960,40],[960,40,960,164],[960,296,960,420],[40,420,960,420],[40,40,40,164],[40,296,40,420],[232,40,232,150],[232,310,232,420],[413,40,413,150],[413,310,413,420],[514,190,625,190],[672,190,694,190],[514,190,514,420],[603,190,603,420],[694,40,694,76],[694,190,694,420]],"windows":[[40,164,40,296],[960,164,960,296]],"areas":[{"kind":"kitchen","x":514,"y":190,"w":89,"h":230,"label":"Kitchen"},{"kind":"wc","x":603,"y":190,"w":91,"h":230,"label":"WC"}],"labels":[{"x":535,"y":20,"text":"Entrance","arrow":true}],"rugs":[{"x":745,"y":170,"w":170,"h":125}],"plants":[{"x":70,"y":146,"size":15,"type":"leafy"},{"x":70,"y":314,"size":17,"type":"leafy"},{"x":310,"y":230,"size":22,"type":"palm"},{"x":394,"y":138,"size":14,"type":"leafy"},{"x":722,"y":312,"size":24,"type":"palm"},{"x":936,"y":138,"size":14,"type":"leafy"},{"x":934,"y":318,"size":17,"type":"palm"}]},"desks":[{"name":"Desk 1","x":67,"y":57,"w":129,"h":60,"chair":"bottom","accent":["#B9ACE3"],"about":""},{"name":"Desk 2","x":79,"y":346,"w":131,"h":57,"chair":"top","accent":["#F2A65A","#EE8A86","#9C7BB5"],"about":""},{"name":"Desk 3","x":265,"y":346,"w":116,"h":57,"chair":"top","accent":["#56625A","#E8559A"],"about":""},{"name":"Desk 4","x":268,"y":57,"w":121,"h":60,"chair":"bottom","accent":["#6F8FC9","#F2D64B"],"about":""},{"name":"Desk B1","x":760,"y":57,"w":119,"h":57,"chair":"bottom","accent":["#A7B07E"],"about":""},{"name":"Desk B2","x":718,"y":356,"w":105,"h":50,"chair":"top","accent":["#E9C9A3"],"about":""},{"name":"Desk B3","x":848,"y":356,"w":102,"h":50,"chair":"top","accent":["#C49A6C","#E8E1D6"],"about":""}]};
   const demoBooked = {};
@@ -222,13 +218,8 @@
   }
   function api(fn, arg, ok, fail) {
     if (LIVE) {
-      let req;
-      if (fn === 'getSetup') req = fetch(API_URL + '?action=setup');
-      else if (fn === 'getDeskPhoto') req = fetch(API_URL + '?action=photo&desk=' + encodeURIComponent(arg));
-      else if (fn === 'book') req = fetch(API_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(Object.assign({ action: 'book' }, arg)) });
-      return req.then(r => r.json())
-        .then(res => res.ok ? ok(fn === 'getDeskPhoto' ? res.data.src : res.data) : fail(new Error(res.error)))
-        .catch(() => fail(new Error('No connection. Check your internet and try again.')));
+      const r = google.script.run.withSuccessHandler(ok).withFailureHandler(fail);
+      return arg === undefined ? r[fn]() : r[fn](arg);
     }
     setTimeout(() => {
       try {
