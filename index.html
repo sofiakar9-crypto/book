@@ -42,8 +42,8 @@
   .day:hover:not(:disabled) { border-color: var(--moss); }
   .day[aria-pressed="true"] { background: var(--moss); border-color: var(--moss); color: #fff; }
   .day[aria-pressed="true"] small { color: #D6E4D8; }
-  .day:disabled small { text-decoration: none; }
-  .day:disabled { background: transparent; border-style: dashed; color: #98A6A9; cursor: not-allowed; text-decoration: line-through; }
+    .day:disabled { background: transparent; border-style: dashed; color: #98A6A9; cursor: not-allowed; }
+  .day:disabled .dn { text-decoration: line-through; }
   .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
   .chip { display: inline-flex; align-items: center; gap: 8px; border: 1px solid var(--moss); background: var(--paper); color: var(--moss-dark); border-radius: 999px; padding: 5px 10px 5px 14px; font: 500 14px var(--font); cursor: pointer; }
   .chip span { font-size: 18px; line-height: 1; }
@@ -111,6 +111,14 @@
   .msg { color: var(--error); margin: 12px 0 0; font-size: 15px; min-height: 1em; }
   .secondary { border: 1.5px solid var(--ink); background: transparent; color: var(--ink); border-radius: 12px; padding: 12px 20px; font: 600 16px var(--font); cursor: pointer; }
 
+  .topbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+  .langs { display: flex; gap: 4px; background: var(--paper); border: 1px solid var(--line); border-radius: 999px; padding: 3px; }
+  .langs button { border: 0; background: transparent; color: var(--muted); font: 600 13px var(--font); padding: 6px 12px; border-radius: 999px; cursor: pointer; }
+  .langs button[aria-pressed="true"] { background: var(--moss); color: #fff; }
+  .price { display: flex; flex-wrap: wrap; gap: 6px 18px; margin: -12px 0 28px; font-size: 15px; }
+  .price b { color: var(--moss); }
+  .price a { color: var(--moss); }
+  .total { font-weight: 600; margin: -6px 0 14px; }
   .privacy { font-size: 13px; color: var(--muted); margin: 10px 0 0; }
   .privacy a { color: var(--moss); }
   .demo { background: #FFF6CF; border: 1px solid #E9D27A; border-radius: 10px; padding: 10px 14px; font-size: 14px; margin: 0 0 20px; }
@@ -135,60 +143,66 @@
 </head>
 <body>
 <main>
-  <p class="brand" id="brand">Out of Office</p>
-  <h1>Book a desk</h1>
-  <p class="intro">Pick your days, choose a desk on the floor plan, and you’ll get a confirmation by email.</p>
+  <div class="topbar">
+    <p class="brand" id="brand">Out of Office</p>
+    <div class="langs" role="group" aria-label="Language">
+      <button type="button" data-lang="en" aria-pressed="true">EN</button>
+      <button type="button" data-lang="el" aria-pressed="false">ΕΛ</button>
+    </div>
+  </div>
+  <h1 data-t="title"></h1>
+  <p class="intro" data-t="intro"></p>
+  <p class="price"><span id="priceLine"></span><span id="monthlyLine"></span></p>
 
-  <p class="demo" id="demoNote" hidden>Preview mode: this page is open outside Google Apps Script, so it shows sample data. Bookings aren’t saved and no emails are sent. </p>
-  <p class="hint" id="loading">Loading free desks…</p>
+  <p class="hint" id="loading" data-t="loading"></p>
 
   <div id="app" hidden>
     <section class="step">
       <div class="num" aria-hidden="true">1</div>
       <div>
-        <h2>Pick your days</h2>
-        <p class="hint" id="daysHint">Tap a day to add it. Tap it again to remove it.</p>
+        <h2 data-t="step1"></h2>
+        <p class="hint" id="daysHint"></p>
         <div class="cal" id="cal"></div>
-        <div class="chips" id="chips" aria-label="Selected days"></div>
+        <div class="chips" id="chips"></div>
       </div>
     </section>
 
     <section class="step">
       <div class="num" aria-hidden="true">2</div>
       <div>
-        <h2>Choose your desk</h2>
-        <p class="hint" id="planHint">Tap a desk to see a photo. Pick your days first to book one.</p>
+        <h2 data-t="step2"></h2>
+        <p class="hint" id="planHint"></p>
         <div class="planwrap">
-          <div class="plan"><svg id="plan" role="group" aria-label="Floor plan" xmlns="http://www.w3.org/2000/svg"></svg></div>
+          <div class="plan"><svg id="plan" role="group" xmlns="http://www.w3.org/2000/svg"></svg></div>
           <div class="preview" id="preview" hidden aria-live="polite">
-            <button type="button" class="close" id="pClose" aria-label="Close desk preview">×</button>
+            <button type="button" class="close" id="pClose">×</button>
             <div class="photo"><img id="pImg" alt=""></div>
             <div><h3 id="pName"></h3><p id="pAbout"></p><p class="status" id="pStatus"></p></div>
           </div>
         </div>
-        <div class="legend"><span><i></i>Free</span><span><i class="l-taken"></i>Taken</span><span><i class="l-mine"></i>Your desk</span></div>
-
+        <div class="legend"><span><i></i><span data-t="free"></span></span><span><i class="l-taken"></i><span data-t="taken"></span></span><span><i class="l-mine"></i><span data-t="yours"></span></span></div>
       </div>
     </section>
 
     <section class="step">
       <div class="num" aria-hidden="true">3</div>
       <div>
-        <h2>Your details</h2>
-        <div class="field"><label for="name">Full name</label><input id="name" autocomplete="name"></div>
+        <h2 data-t="step3"></h2>
+        <div class="field"><label for="name" data-t="fName"></label><input id="name" autocomplete="name"></div>
         <div class="row">
-          <div class="field"><label for="email">Email</label><input id="email" type="email" autocomplete="email" inputmode="email"></div>
-          <div class="field"><label for="phone">Phone</label><input id="phone" type="tel" autocomplete="tel" inputmode="tel"></div>
+          <div class="field"><label for="email" data-t="fEmail"></label><input id="email" type="email" autocomplete="email" inputmode="email"></div>
+          <div class="field"><label for="phone" data-t="fPhone"></label><input id="phone" type="tel" autocomplete="tel" inputmode="tel"></div>
         </div>
-        <div class="field"><label for="address">Address</label><input id="address" autocomplete="street-address"></div>
-        <p class="subhead">For your invoice <span>(optional)</span></p>
-        <div class="field"><label for="company">Company name</label><input id="company" autocomplete="organization"></div>
-        <div class="field"><label for="vat">VAT number</label><input id="vat" autocomplete="off" spellcheck="false"></div>
-        <div class="field"><label for="comments">Comments <span class="opt">(optional)</span></label><textarea id="comments" rows="3" maxlength="500" placeholder="Anything we should know?"></textarea></div>
+        <div class="field"><label for="address" data-t="fAddress"></label><input id="address" autocomplete="street-address"></div>
+        <p class="subhead"><span data-t="invoice" style="color:inherit;font-size:inherit;font-weight:inherit"></span> <span data-t="optional"></span></p>
+        <div class="field"><label for="company" data-t="fCompany"></label><input id="company" autocomplete="organization"></div>
+        <div class="field"><label for="vat" data-t="fVat"></label><input id="vat" autocomplete="off" spellcheck="false"></div>
+        <div class="field"><label for="comments"><span data-t="fComments"></span> <span class="opt" data-t="optional"></span></label><textarea id="comments" rows="3" maxlength="500"></textarea></div>
         <p class="summary" id="summary"></p>
-        <button class="primary" id="bookBtn" type="button" disabled>Book desk</button>
+        <p class="total" id="total" hidden></p>
+        <button class="primary" id="bookBtn" type="button" disabled></button>
         <p class="msg" id="msg" role="alert"></p>
-        <p class="privacy">We use your details only to manage your booking and invoice. <a href="privacy.html" target="_blank" rel="noopener">Privacy policy</a></p>
+        <p class="privacy"><span data-t="privacy"></span> <a id="privacyLink" href="privacy.html" target="_blank" rel="noopener" data-t="privacyLink"></a></p>
       </div>
     </section>
   </div>
@@ -198,23 +212,121 @@
 
 <script>
   const $ = id => document.getElementById(id);
-  const state = { setup: null, dates: new Set(), desk: null, viewing: null, sending: false };
+  const state = { setup: null, dates: new Set(), desk: null, viewing: null, sending: false, done: null };
   const photos = {};
-
   const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+  /* ---------- Language ---------- */
+  const I18N = {
+    en: {
+      title: 'Book a desk', intro: 'Pick your days, choose a desk on the floor plan, and you’ll get a confirmation by email.',
+      price: 'Day pass <b>{net}</b> + VAT ({gross} incl. VAT)', monthly: 'Monthly desk? <a href="mailto:{email}">Contact us</a>',
+      loading: 'Loading free desks…', loadFail: 'The booking page couldn’t load. Refresh the page to try again.',
+      step1: 'Pick your days', daysHint: 'Tap a day to add it. Tap it again to remove it. You can book up to {n} days ahead.',
+      closed: 'Closed', full: 'Fully booked', remove: 'Remove {day}',
+      step2: 'Choose your desk', plan: 'Floor plan', close: 'Close desk preview', photoOf: 'Photo of {desk}',
+      hPending: 'Checking which desks are free…', hNone: 'Tap a desk to see a photo. Pick your days first to book one.',
+      hNoFree: 'No desk is free on all of your days. Remove a day to see more desks.',
+      hMulti: 'Desks shown as free are free on all of your days. Tap one to choose it.', hOne: 'Tap a free desk to choose it.',
+      free: 'Free', taken: 'Taken', yours: 'Your desk',
+      sIdle: 'Pick your days above to book this desk.', sTaken: 'Taken on one or more of your days.',
+      sMine: 'This is your desk. Tap it again to unselect it.', sFree: 'Free on your days. Tap it on the plan to choose it.',
+      aIdle: 'pick your days first', aTaken: 'taken', aMine: 'selected', aFree: 'free',
+      step3: 'Your details', fName: 'Full name', fEmail: 'Email', fPhone: 'Phone', fAddress: 'Address',
+      invoice: 'For your invoice', optional: '(optional)', fCompany: 'Company name', fVat: 'VAT number',
+      fComments: 'Comments', commentsPh: 'Anything we should know?',
+      needDay: 'Pick at least one day to continue.', needDesk: 'Choose a desk on the floor plan to continue.',
+      oneDay: '1 day', nDays: '{n} days', total: 'Total: {net} + VAT = {gross}',
+      book: 'Book desk', booking: 'Booking…',
+      eEmail: 'Check your email address. It should look like name@example.com.', ePhone: 'Add a phone number with at least 7 digits.',
+      eVat: 'A VAT number can only contain letters, numbers, spaces, dots and dashes.',
+      eConn: 'No connection. Check your internet and try again.', eFail: 'The booking didn’t go through. Try again in a moment.',
+      privacy: 'We use your details only to manage your booking and invoice.', privacyLink: 'Privacy policy',
+      doneTitle: 'You’re booked', doneMail: 'A confirmation is on its way to <b>{email}</b>.',
+      doneNoMail: 'Your booking is saved, but the confirmation email couldn’t be sent. Keep your reference number.',
+      reference: 'Reference', again: 'Book another desk',
+      labels: { Entrance: 'Entrance', Kitchen: 'Kitchen', WC: 'WC' }, desk: 'Desk'
+    },
+    el: {
+      title: 'Κλείσε θέση', intro: 'Διάλεξε μέρες, επίλεξε θέση στην κάτοψη και θα λάβεις επιβεβαίωση με email.',
+      price: 'Ημερήσια θέση <b>{net}</b> + ΦΠΑ ({gross} με ΦΠΑ)', monthly: 'Μηνιαία θέση; <a href="mailto:{email}">Επικοινώνησε μαζί μας</a>',
+      loading: 'Φόρτωση διαθέσιμων θέσεων…', loadFail: 'Η σελίδα δεν φόρτωσε. Ανανέωσε τη σελίδα και δοκίμασε ξανά.',
+      step1: 'Διάλεξε μέρες', daysHint: 'Πάτησε μια μέρα για να την προσθέσεις και ξανά για να την αφαιρέσεις. Μπορείς να κλείσεις έως {n} μέρες μπροστά.',
+      closed: 'Κλειστά', full: 'Πλήρες', remove: 'Αφαίρεση {day}',
+      step2: 'Διάλεξε θέση', plan: 'Κάτοψη', close: 'Κλείσιμο προεπισκόπησης', photoOf: 'Φωτογραφία: {desk}',
+      hPending: 'Έλεγχος διαθέσιμων θέσεων…', hNone: 'Πάτησε μια θέση για να δεις φωτογραφία. Διάλεξε πρώτα μέρες για να την κλείσεις.',
+      hNoFree: 'Καμία θέση δεν είναι ελεύθερη όλες τις μέρες που διάλεξες. Αφαίρεσε μια μέρα για να δεις περισσότερες.',
+      hMulti: 'Οι ελεύθερες θέσεις είναι διαθέσιμες όλες τις μέρες σου. Πάτησε μία για να την επιλέξεις.', hOne: 'Πάτησε μια ελεύθερη θέση για να την επιλέξεις.',
+      free: 'Ελεύθερη', taken: 'Κατειλημμένη', yours: 'Η θέση σου',
+      sIdle: 'Διάλεξε μέρες παραπάνω για να κλείσεις αυτή τη θέση.', sTaken: 'Κατειλημμένη σε μία ή περισσότερες από τις μέρες σου.',
+      sMine: 'Αυτή είναι η θέση σου. Πάτησέ τη ξανά για να την αφαιρέσεις.', sFree: 'Ελεύθερη τις μέρες σου. Πάτησέ τη στην κάτοψη για να την επιλέξεις.',
+      aIdle: 'διάλεξε πρώτα μέρες', aTaken: 'κατειλημμένη', aMine: 'επιλεγμένη', aFree: 'ελεύθερη',
+      step3: 'Τα στοιχεία σου', fName: 'Ονοματεπώνυμο', fEmail: 'Email', fPhone: 'Τηλέφωνο', fAddress: 'Διεύθυνση',
+      invoice: 'Για το τιμολόγιο', optional: '(προαιρετικά)', fCompany: 'Επωνυμία εταιρείας', fVat: 'ΑΦΜ',
+      fComments: 'Σχόλια', commentsPh: 'Κάτι που πρέπει να ξέρουμε;',
+      needDay: 'Διάλεξε τουλάχιστον μία μέρα για να συνεχίσεις.', needDesk: 'Διάλεξε θέση στην κάτοψη για να συνεχίσεις.',
+      oneDay: '1 μέρα', nDays: '{n} μέρες', total: 'Σύνολο: {net} + ΦΠΑ = {gross}',
+      book: 'Κράτηση', booking: 'Γίνεται κράτηση…',
+      eEmail: 'Έλεγξε το email σου. Πρέπει να μοιάζει με name@example.com.', ePhone: 'Συμπλήρωσε τηλέφωνο με τουλάχιστον 7 ψηφία.',
+      eVat: 'Ο ΑΦΜ μπορεί να περιέχει μόνο γράμματα, αριθμούς, κενά, τελείες και παύλες.',
+      eConn: 'Δεν υπάρχει σύνδεση. Έλεγξε το internet σου και δοκίμασε ξανά.', eFail: 'Η κράτηση δεν ολοκληρώθηκε. Δοκίμασε ξανά σε λίγο.',
+      privacy: 'Χρησιμοποιούμε τα στοιχεία σου μόνο για την κράτηση και την τιμολόγηση.', privacyLink: 'Πολιτική απορρήτου',
+      doneTitle: 'Η κράτησή σου έγινε', doneMail: 'Θα λάβεις επιβεβαίωση στο <b>{email}</b>.',
+      doneNoMail: 'Η κράτηση αποθηκεύτηκε, αλλά το email επιβεβαίωσης δεν στάλθηκε. Κράτησε τον κωδικό κράτησης.',
+      reference: 'Κωδικός κράτησης', again: 'Νέα κράτηση',
+      labels: { Entrance: 'Είσοδος', Kitchen: 'Κουζίνα', WC: 'WC' }, desk: 'Θέση'
+    }
+  };
+  let lang = 'en';
+  try { lang = localStorage.getItem('ooo-lang') || ''; } catch (e) {}
+  if (lang !== 'en' && lang !== 'el') lang = /^el\b/i.test(navigator.language || '') ? 'el' : 'en';
+  const t = (key, v) => { let s = I18N[lang][key] ?? I18N.en[key] ?? key; Object.keys(v || {}).forEach(k => { s = s.split('{' + k + '}').join(v[k]); }); return s; };
+  const locale = () => lang === 'el' ? 'el-GR' : 'en-GB';
+  const deskLabel = name => name.replace(/^Desk/, t('desk'));
+  const money = x => new Intl.NumberFormat(locale(), { style: 'currency', currency: 'EUR' }).format(x);
   function fmt(key, opts) {
     const [y, m, d] = key.split('-').map(Number);
-    return new Date(Date.UTC(y, m - 1, d, 12)).toLocaleDateString('en-GB', Object.assign({ timeZone: 'UTC' }, opts));
+    return new Date(Date.UTC(y, m - 1, d, 12)).toLocaleDateString(locale(), Object.assign({ timeZone: 'UTC' }, opts));
   }
   const short = key => fmt(key, { weekday: 'short', day: 'numeric', month: 'short' });
 
-  /* ---------- Server calls (with a preview mode outside Apps Script) ---------- */
-  // Your Google Apps Script link. Bookings, emails and photos all go through it.
+  function applyLang() {
+    document.documentElement.lang = lang;
+    document.title = 'Out of Office – ' + t('title');
+    document.querySelectorAll('[data-t]').forEach(el => { el.textContent = t(el.dataset.t); });
+    document.querySelectorAll('.langs button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.lang === lang)));
+    $('comments').placeholder = t('commentsPh');
+    $('plan').setAttribute('aria-label', t('plan'));
+    $('pClose').setAttribute('aria-label', t('close'));
+    $('privacyLink').href = 'privacy.html' + (lang === 'el' ? '#el' : '#en');
+    if (!state.sending) $('bookBtn').textContent = t('book');
+    renderPrice();
+    if (state.setup && !$('app').hidden) { $('daysHint').textContent = t('daysHint', { n: state.setup.daysAhead }); render(); }
+    if (state.done) showDone(state.done);
+  }
+  document.querySelector('.langs').addEventListener('click', e => {
+    const b = e.target.closest('button[data-lang]');
+    if (!b || b.dataset.lang === lang) return;
+    lang = b.dataset.lang;
+    try { localStorage.setItem('ooo-lang', lang); } catch (err) {}
+    applyLang();
+  });
+
+  /* ---------- Prices ---------- */
+  const PRICE = { day: 15, vat: 24 }, CONTACT = { email: 'hello@outofoffice.gr' };
+  const price = () => (state.setup && state.setup.price) || PRICE;
+  const gross = net => Math.round(net * (1 + price().vat / 100) * 100) / 100;
+  function renderPrice() {
+    const p = price(), c = (state.setup && state.setup.contact) || CONTACT;
+    $('priceLine').innerHTML = t('price', { net: money(p.day), gross: money(gross(p.day)) });
+    $('monthlyLine').innerHTML = t('monthly', { email: esc(c.email) });
+  }
+
+  /* ---------- Server calls ---------- */
+  // Your Google Apps Script link. Bookings and emails go through it.
   const API_URL = 'https://script.google.com/macros/s/AKfycbycrPefjRatt4X_v4MHzNpcdyuSvDNwAEhkuyDG9icW3oW2r-5QKX68g_tbExjeF5k8/exec';
-  const LIVE = !!API_URL;
-  // Copy of the settings from Code.gs, used ONLY in preview mode. The live page always uses Code.gs.
+  // Copy of the layout from Code.gs, used only to draw the page before Google answers.
   const DEMO = {"spaceName":"Out of Office","daysAhead":30,"closedWeekdays":[0,6],"floor":{"width":1000,"height":468},"room":{"walls":[[40,40,465,40],[606,40,960,40],[960,40,960,164],[960,296,960,420],[40,420,960,420],[40,40,40,164],[40,296,40,420],[232,40,232,150],[232,310,232,420],[413,40,413,150],[413,310,413,420],[514,190,625,190],[672,190,694,190],[514,190,514,420],[603,190,603,420],[694,40,694,76],[694,190,694,420]],"windows":[[40,164,40,296],[960,164,960,296]],"areas":[{"kind":"kitchen","x":514,"y":190,"w":89,"h":230,"label":"Kitchen"},{"kind":"wc","x":603,"y":190,"w":91,"h":230,"label":"WC"}],"labels":[{"x":535,"y":20,"text":"Entrance","arrow":true}],"rugs":[{"x":745,"y":170,"w":170,"h":125}],"plants":[{"x":70,"y":146,"size":15,"type":"leafy"},{"x":70,"y":314,"size":17,"type":"leafy"},{"x":310,"y":230,"size":22,"type":"palm"},{"x":394,"y":138,"size":14,"type":"leafy"},{"x":722,"y":312,"size":24,"type":"palm"},{"x":936,"y":138,"size":14,"type":"leafy"},{"x":934,"y":318,"size":17,"type":"palm"}]},"desks":[{"name":"Desk 1","x":67,"y":57,"w":129,"h":60,"chair":"bottom","accent":["#B9ACE3"],"about":""},{"name":"Desk 2","x":79,"y":346,"w":131,"h":57,"chair":"top","accent":["#F2A65A","#EE8A86","#9C7BB5"],"about":""},{"name":"Desk 3","x":265,"y":346,"w":116,"h":57,"chair":"top","accent":["#56625A","#E8559A"],"about":""},{"name":"Desk 4","x":268,"y":57,"w":121,"h":60,"chair":"bottom","accent":["#6F8FC9","#F2D64B"],"about":""},{"name":"Desk B1","x":760,"y":57,"w":119,"h":57,"chair":"bottom","accent":["#A7B07E"],"about":""},{"name":"Desk B2","x":718,"y":356,"w":105,"h":50,"chair":"top","accent":["#E9C9A3"],"about":""},{"name":"Desk B3","x":848,"y":356,"w":102,"h":50,"chair":"top","accent":["#C49A6C","#E8E1D6"],"about":""}]};
-  const demoBooked = {};
   function demoSetup() {
     const now = new Date(), days = [];
     for (let i = 0; i < DEMO.daysAhead; i++) {
@@ -222,39 +334,21 @@
       days.push({ date: d.toISOString().slice(0, 10), weekday: d.getUTCDay(), closed: DEMO.closedWeekdays.includes(d.getUTCDay()) });
     }
     return { spaceName: DEMO.spaceName, daysAhead: DEMO.daysAhead, floor: DEMO.floor, room: DEMO.room, desks: DEMO.desks,
-      hasPhotos: true, days, booked: JSON.parse(JSON.stringify(demoBooked)) };
+      hasPhotos: true, days, booked: {} };
   }
-  function api(fn, arg, ok, fail) {
-    if (LIVE) {
-      let req;
-      if (fn === 'getSetup') req = fetch(API_URL + '?action=setup');
-      else if (fn === 'getDeskPhoto') req = fetch(API_URL + '?action=photo&desk=' + encodeURIComponent(arg));
-      else if (fn === 'book') req = fetch(API_URL + '?action=book&data=' + encodeURIComponent(JSON.stringify(arg)));
-      return req.then(r => r.json())
-        .then(res => res.ok ? ok(fn === 'getDeskPhoto' ? res.data.src : res.data) : fail(new Error(res.error)))
-        .catch(() => fail(new Error('No connection. Check your internet and try again.')));
-    }
-    setTimeout(() => {
-      try {
-        if (fn === 'getSetup') ok(demoSetup());
-        else if (fn === 'getDeskPhoto') ok((window.DEMO_PHOTOS || {})[arg] || null);
-        else if (fn === 'book') {
-          arg.dates.forEach(d => (demoBooked[d] = demoBooked[d] || []).push(arg.desk));
-          ok({ id: 'OOO-DEMO01', desk: arg.desk, dates: arg.dates, email: arg.email, emailed: true });
-        }
-      } catch (e) { fail(e); }
-    }, 150);
+  function api(action, arg) {
+    const url = API_URL + '?action=' + action + (arg ? '&data=' + encodeURIComponent(JSON.stringify(arg)) : '');
+    return fetch(url).then(r => r.json(), () => { throw new Error(t('eConn')); })
+      .then(res => { if (!res.ok) throw new Error(res.error); return res.data; });
   }
 
   /* ---------- Loading ---------- */
   function load() {
-    $('demoNote').hidden = !!LIVE;
-    // Show the calendar and floor plan straight away; free desks fill in when Google answers
-    if (LIVE && !state.setup) { state.setup = demoSetup(); state.setup.pending = true; afterLoad(); }
-    api('getSetup', undefined, s => { s.hasPhotos = true; s.pending = false; state.setup = s; afterLoad(); }, err => {
+    // Draw the calendar and floor plan straight away; free desks fill in when Google answers
+    if (!state.setup) { state.setup = demoSetup(); state.setup.pending = true; afterLoad(); }
+    api('setup').then(s => { s.hasPhotos = true; s.pending = false; state.setup = s; afterLoad(); }, () => {
       const el = $('loading');
-      el.hidden = false; el.className = 'hint loaderr';
-      el.textContent = 'The booking page couldn’t load: ' + ((err && err.message) || err || 'unknown error') + '. Refresh the page to try again.';
+      el.hidden = false; el.className = 'hint loaderr'; el.textContent = t('loadFail');
     });
   }
 
@@ -263,18 +357,19 @@
     const open = new Set(s.days.filter(d => !d.closed && !isFull(d.date)).map(d => d.date));
     [...state.dates].forEach(d => { if (!open.has(d)) state.dates.delete(d); });
     $('brand').textContent = s.spaceName;
-    $('daysHint').textContent = `Tap a day to add it. Tap it again to remove it. You can book up to ${s.daysAhead} days ahead.`;
+    $('daysHint').textContent = t('daysHint', { n: s.daysAhead });
     $('loading').hidden = true;
     $('app').hidden = false;
+    renderPrice();
     render();
     if (s.hasPhotos) s.desks.forEach(d => loadPhoto(d.name));
   }
 
   const isFull = date => (state.setup.booked[date] || []).length >= state.setup.desks.length;
   function taken() {
-    const t = new Set();
-    state.dates.forEach(d => (state.setup.booked[d] || []).forEach(n => t.add(n)));
-    return t;
+    const tk = new Set();
+    state.dates.forEach(d => (state.setup.booked[d] || []).forEach(n => tk.add(n)));
+    return tk;
   }
 
   /* ---------- Rendering ---------- */
@@ -285,23 +380,27 @@
 
   function renderCal() {
     const days = state.setup.days;
-    let html = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(w => `<div class="wd" aria-hidden="true">${w}</div>`).join('');
+    const monday = new Date(Date.UTC(2024, 0, 1, 12));
+    let html = [0, 1, 2, 3, 4, 5, 6].map(i => {
+      const w = new Date(monday.getTime() + i * 864e5).toLocaleDateString(locale(), { weekday: 'short', timeZone: 'UTC' });
+      return `<div class="wd" aria-hidden="true">${esc(w)}</div>`;
+    }).join('');
     html += '<div></div>'.repeat((days[0].weekday + 6) % 7);
     days.forEach((d, i) => {
       const dayNum = Number(d.date.slice(8));
       const full = !d.closed && isFull(d.date);
       const on = state.dates.has(d.date);
-      const month = (i === 0 || dayNum === 1) ? fmt(d.date, { month: 'short' }) : '&nbsp;';
-      const status = d.closed ? ', closed' : full ? ', fully booked' : '';
+      const month = (i === 0 || dayNum === 1) ? esc(fmt(d.date, { month: 'short' })) : '&nbsp;';
+      const status = d.closed ? ', ' + t('closed') : full ? ', ' + t('full') : '';
       html += `<button type="button" class="day" data-date="${d.date}" aria-pressed="${on}" ${d.closed || full ? 'disabled' : ''}
-        aria-label="${fmt(d.date, { weekday: 'long', day: 'numeric', month: 'long' })}${status}" title="${d.closed ? 'Closed' : full ? 'Fully booked' : ''}"><small>${month}</small>${dayNum}</button>`;
+        aria-label="${esc(fmt(d.date, { weekday: 'long', day: 'numeric', month: 'long' }))}${status}" title="${d.closed ? t('closed') : full ? t('full') : ''}"><small>${month}</small><span class="dn">${dayNum}</span></button>`;
     });
     $('cal').innerHTML = html;
   }
 
   function renderChips() {
     $('chips').innerHTML = [...state.dates].sort().map(d =>
-      `<button type="button" class="chip" data-date="${d}" aria-label="Remove ${fmt(d, { weekday: 'long', day: 'numeric', month: 'long' })}">${short(d)}<span aria-hidden="true">×</span></button>`
+      `<button type="button" class="chip" data-date="${d}" aria-label="${esc(t('remove', { day: fmt(d, { weekday: 'long', day: 'numeric', month: 'long' }) }))}">${esc(short(d))}<span aria-hidden="true">×</span></button>`
     ).join('');
   }
 
@@ -328,14 +427,23 @@
     return cols.map((c, i) => `<rect x="${x0 + i * seg}" y="${y}" width="${seg}" height="6" rx="2" fill="${c}"/>`).join('');
   }
 
+  function chair(d) {
+    const side = d.chair || 'bottom', gap = 20;
+    const cx = side === 'left' ? d.x - gap : side === 'right' ? d.x + d.w + gap : d.x + d.w / 2;
+    const cy = side === 'top' ? d.y - gap : side === 'bottom' ? d.y + d.h + gap : d.y + d.h / 2;
+    return `<circle cx="${cx}" cy="${cy}" r="14"/>`;
+  }
+
   function statusOf(name) {
     if (!state.dates.size || state.setup.pending) return 'idle';
     if (taken().has(name)) return 'taken';
     return state.desk === name ? 'mine' : 'free';
   }
 
+  const lbl = s => (I18N[lang].labels || {})[s] || s;
+
   function renderPlan() {
-    const s = state.setup, has = state.dates.size > 0, t = taken();
+    const s = state.setup, has = state.dates.size > 0, tk = taken();
     const W = s.floor.width, H = s.floor.height, R = s.room;
     let g = `<defs>
       <pattern id="hatch" width="10" height="10" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="10" height="10" fill="#EFECE6"/><line x1="0" y1="0" x2="0" y2="10" stroke="#CFC8BC" stroke-width="5"/></pattern>
@@ -356,31 +464,27 @@
     (R.windows || []).forEach(w => { g += `<line class="window" x1="${w[0]}" y1="${w[1]}" x2="${w[2]}" y2="${w[3]}"/>`; });
     (R.walls || []).forEach(w => { g += `<line class="wall" x1="${w[0]}" y1="${w[1]}" x2="${w[2]}" y2="${w[3]}"/>`; });
     (R.areas || []).forEach(a => {
-      if (a.label) g += `<text class="lbl" x="${a.x + a.w / 2 + (a.kind === 'kitchen' ? 9 : 0)}" y="${a.y + a.h / 2}" text-anchor="middle" dominant-baseline="central">${esc(a.label)}</text>`;
+      if (a.label) g += `<text class="lbl" x="${a.x + a.w / 2 + (a.kind === 'kitchen' ? 9 : 0)}" y="${a.y + a.h / 2}" text-anchor="middle" dominant-baseline="central">${esc(lbl(a.label))}</text>`;
     });
     (R.labels || []).forEach(l => {
-      g += `<text class="lbl" x="${l.x}" y="${l.y}" text-anchor="middle" dominant-baseline="central">${esc(l.text)}</text>`;
+      g += `<text class="lbl" x="${l.x}" y="${l.y}" text-anchor="middle" dominant-baseline="central">${esc(lbl(l.text))}</text>`;
       if (l.arrow) g += `<path class="arrow" d="M${l.x - 9} ${l.y + 26} h18 l-9 12 z"/>`;
     });
     (R.plants || []).forEach(p => { g += plant(p); });
     s.desks.forEach(d => {
       const st = statusOf(d.name);
-      const label = { idle: 'pick your days first', taken: 'taken', mine: 'selected', free: 'free' }[st];
-      g += `<g class="desk ${st}${state.viewing === d.name ? ' viewing' : ''}" data-desk="${esc(d.name)}" tabindex="0" role="button" aria-label="${esc(d.name)}, ${label}">
+      const label = t({ idle: 'aIdle', taken: 'aTaken', mine: 'aMine', free: 'aFree' }[st]);
+      g += `<g class="desk ${st}${state.viewing === d.name ? ' viewing' : ''}" data-desk="${esc(d.name)}" tabindex="0" role="button" aria-label="${esc(deskLabel(d.name))}, ${esc(label)}">
         ${accent(d)}${chair(d)}
         <rect class="top" x="${d.x}" y="${d.y}" width="${d.w}" height="${d.h}" rx="6"/>
-        <text x="${d.x + d.w / 2}" y="${d.y + d.h / 2}" text-anchor="middle" dominant-baseline="central">${esc(d.name)}</text></g>`;
+        <text x="${d.x + d.w / 2}" y="${d.y + d.h / 2}" text-anchor="middle" dominant-baseline="central">${esc(deskLabel(d.name))}</text></g>`;
     });
     const svg = $('plan');
     svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
     svg.innerHTML = g;
 
-    const free = s.desks.filter(d => !t.has(d.name)).length;
-    $('planHint').textContent = s.pending && has ? 'Checking which desks are free…'
-      : !has ? 'Tap a desk to see a photo. Pick your days first to book one.'
-      : free === 0 ? 'No desk is free on all of your days. Remove a day to see more desks.'
-      : state.dates.size > 1 ? 'Desks shown as free are free on all of your days. Tap one to choose it.'
-      : 'Tap a free desk to choose it.';
+    const free = s.desks.filter(d => !tk.has(d.name)).length;
+    $('planHint').textContent = t(s.pending && has ? 'hPending' : !has ? 'hNone' : free === 0 ? 'hNoFree' : state.dates.size > 1 ? 'hMulti' : 'hOne');
     renderPreview();
   }
 
@@ -391,18 +495,18 @@
     if (!d) { box.hidden = true; return; }
     box.hidden = false;
     box.classList.toggle('left', d.x + d.w / 2 > state.setup.floor.width / 2);
-    $('pName').textContent = d.name;
+    $('pName').textContent = deskLabel(d.name);
     $('pAbout').textContent = d.about || '';
     $('pAbout').hidden = !d.about;
     const st = statusOf(d.name), el = $('pStatus');
     el.className = 'status ' + (st === 'mine' ? 'ok' : st === 'free' ? '' : 'no');
-    el.textContent = { idle: 'Pick your days above to book this desk.', taken: 'Taken on one or more of your days.', mine: 'This is your desk. Tap it again to unselect it.', free: 'Free on your days. Tap it on the plan to choose it.' }[st];
+    el.textContent = t({ idle: 'sIdle', taken: 'sTaken', mine: 'sMine', free: 'sFree' }[st]);
     const src = photos[d.name];
-    box.classList.toggle('no-photo', !state.setup.hasPhotos || src === null);
+    box.classList.toggle('no-photo', src === null);
     const img = $('pImg');
-    if (src) { img.src = src; img.alt = 'Photo of ' + d.name; }
+    if (src) { img.src = src; img.alt = t('photoOf', { desk: deskLabel(d.name) }); }
     else { img.removeAttribute('src'); img.alt = ''; }
-    if (state.setup.hasPhotos && !(d.name in photos)) loadPhoto(d.name);
+    if (!(d.name in photos)) loadPhoto(d.name);
   }
 
   // Desk photos live next to this page: "Desk B2" -> desk-b2.jpg
@@ -416,20 +520,13 @@
     img.src = photoUrl(name);
   }
 
-  function chair(d) {
-    const side = d.chair || 'bottom', gap = 20;
-    const cx = side === 'left' ? d.x - gap : side === 'right' ? d.x + d.w + gap : d.x + d.w / 2;
-    const cy = side === 'top' ? d.y - gap : side === 'bottom' ? d.y + d.h + gap : d.y + d.h / 2;
-    return `<circle cx="${cx}" cy="${cy}" r="14"/>`;
-  }
-
   function renderSummary() {
     const n = state.dates.size;
-    let text;
-    if (!n) text = 'Pick at least one day to continue.';
-    else if (!state.desk) text = 'Choose a desk on the floor plan to continue.';
-    else text = `${state.desk}, ${n === 1 ? '1 day' : n + ' days'}: ${[...state.dates].sort().map(short).join(', ')}`;
-    $('summary').textContent = text;
+    $('summary').textContent = !n ? t('needDay') : !state.desk ? t('needDesk')
+      : `${deskLabel(state.desk)}, ${t(n === 1 ? 'oneDay' : 'nDays', { n })}: ${[...state.dates].sort().map(short).join(', ')}`;
+    const net = n * price().day;
+    $('total').hidden = !n;
+    $('total').textContent = n ? t('total', { net: money(net), gross: money(gross(net)) }) : '';
     const filled = !state.setup.pending && ['name', 'email', 'phone', 'address'].every(id => $(id).value.trim());
     $('bookBtn').disabled = state.sending || !n || !state.desk || !filled;
   }
@@ -482,15 +579,15 @@
   ['name', 'email', 'phone', 'address'].forEach(id => $(id).addEventListener('input', renderSummary));
 
   function check(req) {
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(req.email)) return 'Check your email address. It should look like name@example.com.';
-    if (!/^[+0-9 ().\-]+$/.test(req.phone) || req.phone.replace(/\D/g, '').length < 7) return 'Add a phone number with at least 7 digits.';
-    if (req.vat && !/^[A-Za-z0-9 .\-]+$/.test(req.vat)) return 'A VAT number can only contain letters, numbers, spaces, dots and dashes.';
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(req.email)) return t('eEmail');
+    if (!/^[+0-9 ().\-]+$/.test(req.phone) || req.phone.replace(/\D/g, '').length < 7) return t('ePhone');
+    if (req.vat && !/^[A-Za-z0-9 .\-]+$/.test(req.vat)) return t('eVat');
     return '';
   }
 
   $('bookBtn').addEventListener('click', () => {
     const req = {
-      dates: [...state.dates].sort(), desk: state.desk,
+      dates: [...state.dates].sort(), desk: state.desk, lang,
       name: $('name').value.trim(), email: $('email').value.trim(), phone: $('phone').value.trim(),
       company: $('company').value.trim(), address: $('address').value.trim(), vat: $('vat').value.trim(), comments: $('comments').value.trim()
     };
@@ -498,39 +595,41 @@
     if (problem) { $('msg').textContent = problem; return; }
     state.sending = true;
     $('bookBtn').disabled = true;
-    $('bookBtn').textContent = 'Booking…';
+    $('bookBtn').textContent = t('booking');
     $('msg').textContent = '';
-    api('book', req, showDone, err => {
-        state.sending = false;
-        $('bookBtn').textContent = 'Book desk';
-        const m = (err && err.message ? err.message : '').replace(/^(Error|Exception):\s*/, '');
-        $('msg').textContent = m || 'The booking didn’t go through. Try again in a moment.';
-        load(); // refresh which desks are free
-      });
+    api('book', req).then(showDone, err => {
+      state.sending = false;
+      $('bookBtn').textContent = t('book');
+      const m = (err && err.message ? err.message : '').replace(/^(Error|Exception):\s*/, '');
+      $('msg').textContent = m || t('eFail');
+      load(); // refresh which desks are free
+    });
   });
 
   function showDone(res) {
     state.sending = false;
+    state.done = res;
     $('app').hidden = true;
     const list = res.dates.map(d => `<li>${esc(fmt(d, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }))}</li>`).join('');
-    const mail = res.emailed
-      ? `A confirmation is on its way to <b>${esc(res.email)}</b>.`
-      : `Your booking is saved, but the confirmation email couldn’t be sent. Keep your reference number.`;
-    $('done').innerHTML = `<h2>You’re booked</h2>
-      <p><b>${esc(res.desk)}</b></p><ul>${list}</ul>
-      <p>${mail}</p><p>Reference: ${esc(res.id)}</p>
-      <button type="button" class="secondary" id="again">Book another desk</button>`;
+    const net = res.dates.length * price().day;
+    $('done').innerHTML = `<h2>${esc(t('doneTitle'))}</h2>
+      <p><b>${esc(deskLabel(res.desk))}</b></p><ul>${list}</ul>
+      <p>${esc(t('total', { net: money(net), gross: money(gross(net)) }))}</p>
+      <p>${res.emailed ? t('doneMail', { email: esc(res.email) }) : esc(t('doneNoMail'))}</p>
+      <p>${esc(t('reference'))}: ${esc(res.id)}</p>
+      <button type="button" class="secondary" id="again">${esc(t('again'))}</button>`;
     $('done').hidden = false;
     $('again').addEventListener('click', () => {
-      state.dates.clear(); state.desk = null;
-      $('bookBtn').textContent = 'Book desk';
+      state.dates.clear(); state.desk = null; state.done = null;
+      $('bookBtn').textContent = t('book');
       $('done').hidden = true;
-      $('loading').hidden = false; $('loading').textContent = 'Loading free desks…';
+      $('loading').hidden = false; $('loading').textContent = t('loading');
       load();
     });
     window.scrollTo(0, 0);
   }
 
+  applyLang();
   load();
 </script>
 </body>
