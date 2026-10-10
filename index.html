@@ -99,9 +99,11 @@
   .row { display: grid; grid-template-columns: 1fr 1fr; gap: 0 14px; }
   .field { display: grid; gap: 6px; margin-bottom: 14px; }
   label { font-weight: 600; font-size: 14px; }
+  textarea { font: 16px Figtree, sans-serif; padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--paper); color: var(--ink); width: 100%; resize: vertical; }
+  textarea:focus { border-color: var(--moss); }
   input { font: 16px Figtree, sans-serif; padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--paper); color: var(--ink); width: 100%; }
   input:focus { border-color: var(--moss); }
-  button:focus-visible, input:focus-visible, .day:focus-visible, .chip:focus-visible { outline: 3px solid var(--sun); outline-offset: 2px; }
+  button:focus-visible, input:focus-visible, textarea:focus-visible, .day:focus-visible, .chip:focus-visible { outline: 3px solid var(--sun); outline-offset: 2px; }
   .subhead { font-weight: 600; margin: 10px 0 10px; padding-top: 14px; border-top: 1px dashed var(--line); }
   .subhead span, .opt { font-weight: 400; color: var(--muted); font-size: 13px; }
   .summary { margin: 6px 0 14px; font-size: 15px; }
@@ -182,6 +184,7 @@
         <p class="subhead">For your invoice <span>(optional)</span></p>
         <div class="field"><label for="company">Company name</label><input id="company" autocomplete="organization"></div>
         <div class="field"><label for="vat">VAT number</label><input id="vat" autocomplete="off" spellcheck="false"></div>
+        <div class="field"><label for="comments">Comments <span class="opt">(optional)</span></label><textarea id="comments" rows="3" maxlength="500" placeholder="Anything we should know?"></textarea></div>
         <p class="summary" id="summary"></p>
         <button class="primary" id="bookBtn" type="button" disabled>Book desk</button>
         <p class="msg" id="msg" role="alert"></p>
@@ -245,7 +248,9 @@
   /* ---------- Loading ---------- */
   function load() {
     $('demoNote').hidden = !!LIVE;
-    api('getSetup', undefined, s => { s.hasPhotos = true; state.setup = s; afterLoad(); }, err => {
+    // Show the calendar and floor plan straight away; free desks fill in when Google answers
+    if (LIVE && !state.setup) { state.setup = demoSetup(); state.setup.pending = true; afterLoad(); }
+    api('getSetup', undefined, s => { s.hasPhotos = true; s.pending = false; state.setup = s; afterLoad(); }, err => {
       const el = $('loading');
       el.hidden = false; el.className = 'hint loaderr';
       el.textContent = 'The booking page couldn’t load: ' + ((err && err.message) || err || 'unknown error') + '. Refresh the page to try again.';
@@ -323,7 +328,7 @@
   }
 
   function statusOf(name) {
-    if (!state.dates.size) return 'idle';
+    if (!state.dates.size || state.setup.pending) return 'idle';
     if (taken().has(name)) return 'taken';
     return state.desk === name ? 'mine' : 'free';
   }
@@ -370,7 +375,8 @@
     svg.innerHTML = g;
 
     const free = s.desks.filter(d => !t.has(d.name)).length;
-    $('planHint').textContent = !has ? 'Tap a desk to see a photo. Pick your days first to book one.'
+    $('planHint').textContent = s.pending && has ? 'Checking which desks are free…'
+      : !has ? 'Tap a desk to see a photo. Pick your days first to book one.'
       : free === 0 ? 'No desk is free on all of your days. Remove a day to see more desks.'
       : state.dates.size > 1 ? 'Desks shown as free are free on all of your days. Tap one to choose it.'
       : 'Tap a free desk to choose it.';
@@ -423,7 +429,7 @@
     else if (!state.desk) text = 'Choose a desk on the floor plan to continue.';
     else text = `${state.desk}, ${n === 1 ? '1 day' : n + ' days'}: ${[...state.dates].sort().map(short).join(', ')}`;
     $('summary').textContent = text;
-    const filled = ['name', 'email', 'phone', 'address'].every(id => $(id).value.trim());
+    const filled = !state.setup.pending && ['name', 'email', 'phone', 'address'].every(id => $(id).value.trim());
     $('bookBtn').disabled = state.sending || !n || !state.desk || !filled;
   }
 
@@ -485,7 +491,7 @@
     const req = {
       dates: [...state.dates].sort(), desk: state.desk,
       name: $('name').value.trim(), email: $('email').value.trim(), phone: $('phone').value.trim(),
-      company: $('company').value.trim(), address: $('address').value.trim(), vat: $('vat').value.trim()
+      company: $('company').value.trim(), address: $('address').value.trim(), vat: $('vat').value.trim(), comments: $('comments').value.trim()
     };
     const problem = check(req);
     if (problem) { $('msg').textContent = problem; return; }
