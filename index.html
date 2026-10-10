@@ -199,7 +199,6 @@
         <div class="field"><label for="vat" data-t="fVat"></label><input id="vat" autocomplete="off" spellcheck="false"></div>
         <div class="field"><label for="comments"><span data-t="fComments"></span> <span class="opt" data-t="optional"></span></label><textarea id="comments" rows="3" maxlength="500"></textarea></div>
         <p class="summary" id="summary"></p>
-        <p class="total" id="total" hidden></p>
         <button class="primary" id="bookBtn" type="button" disabled></button>
         <p class="msg" id="msg" role="alert"></p>
         <p class="privacy"><span data-t="privacy"></span> <a id="privacyLink" href="privacy.html" target="_blank" rel="noopener" data-t="privacyLink"></a></p>
@@ -524,9 +523,6 @@
     const n = state.dates.size;
     $('summary').textContent = !n ? t('needDay') : !state.desk ? t('needDesk')
       : `${deskLabel(state.desk)}, ${t(n === 1 ? 'oneDay' : 'nDays', { n })}: ${[...state.dates].sort().map(short).join(', ')}`;
-    const net = n * price().day;
-    $('total').hidden = !n;
-    $('total').textContent = n ? t('total', { net: money(net), gross: money(gross(net)) }) : '';
     const filled = !state.setup.pending && ['name', 'email', 'phone', 'address'].every(id => $(id).value.trim());
     $('bookBtn').disabled = state.sending || !n || !state.desk || !filled;
   }
@@ -611,10 +607,8 @@
     state.done = res;
     $('app').hidden = true;
     const list = res.dates.map(d => `<li>${esc(fmt(d, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }))}</li>`).join('');
-    const net = res.dates.length * price().day;
     $('done').innerHTML = `<h2>${esc(t('doneTitle'))}</h2>
       <p><b>${esc(deskLabel(res.desk))}</b></p><ul>${list}</ul>
-      <p>${esc(t('total', { net: money(net), gross: money(gross(net)) }))}</p>
       <p>${res.emailed ? t('doneMail', { email: esc(res.email) }) : esc(t('doneNoMail'))}</p>
       <p>${esc(t('reference'))}: ${esc(res.id)}</p>
       <button type="button" class="secondary" id="again">${esc(t('again'))}</button>`;
