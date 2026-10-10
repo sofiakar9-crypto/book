@@ -5,9 +5,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Out of Office – Book a desk</title>
 <meta name="description" content="Book a desk at Out of Office coworking, Thessaloniki.">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Figtree:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
   :root {
     --wall: #F6F4F0;
@@ -21,25 +18,26 @@
     --birch: #F0E2C6;
     --sun: #F2D14A;
     --error: #A8261D;
+    --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   }
   * { box-sizing: border-box; }
-  body { margin: 0; background: var(--wall); color: var(--ink); font: 16px/1.5 Figtree, system-ui, -apple-system, "Segoe UI", sans-serif; }
+  body { margin: 0; background: var(--wall); color: var(--ink); font: 16px/1.5 var(--font); }
   main { max-width: 780px; margin: 0 auto; padding: 36px 20px 72px; }
 
   .brand { margin: 0; font-weight: 600; color: var(--moss); }
-  h1 { font-family: "Bricolage Grotesque", Figtree, sans-serif; font-weight: 800; font-size: clamp(42px, 9vw, 72px); line-height: .95; letter-spacing: -.025em; margin: 8px 0 14px; }
+  h1 { font-family: var(--font); font-weight: 800; font-size: clamp(42px, 9vw, 72px); line-height: .95; letter-spacing: -.025em; margin: 8px 0 14px; }
   .intro { color: var(--muted); max-width: 48ch; margin: 0 0 28px; }
 
   .step { display: grid; grid-template-columns: 56px 1fr; gap: 0 12px; padding: 28px 0; border-top: 1.5px solid var(--ink); }
   .step > div { min-width: 0; }
-  .num { font: 800 44px/1 "Bricolage Grotesque", Figtree, sans-serif; color: var(--oak); }
-  h2 { font: 600 24px/1.2 "Bricolage Grotesque", Figtree, sans-serif; margin: 6px 0 4px; }
+  .num { font: 800 44px/1 var(--font); color: var(--oak); }
+  h2 { font: 600 24px/1.2 var(--font); margin: 6px 0 4px; }
   .hint { color: var(--muted); margin: 0 0 16px; font-size: 15px; }
 
   /* Calendar */
   .cal { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; max-width: 460px; }
   .wd { font-size: 12px; color: var(--muted); text-align: center; }
-  .day { appearance: none; border: 1px solid var(--line); background: var(--paper); color: var(--ink); border-radius: 10px; aspect-ratio: 1 / 1; min-height: 42px; padding: 0; font: 600 16px Figtree, sans-serif; cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1.1; }
+  .day { appearance: none; border: 1px solid var(--line); background: var(--paper); color: var(--ink); border-radius: 10px; aspect-ratio: 1 / 1; min-height: 42px; padding: 0; font: 600 16px var(--font); cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1.1; }
   .day small { font-size: 10px; font-weight: 500; color: var(--muted); }
   .day:hover:not(:disabled) { border-color: var(--moss); }
   .day[aria-pressed="true"] { background: var(--moss); border-color: var(--moss); color: #fff; }
@@ -47,7 +45,7 @@
   .day:disabled small { text-decoration: none; }
   .day:disabled { background: transparent; border-style: dashed; color: #98A6A9; cursor: not-allowed; text-decoration: line-through; }
   .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
-  .chip { display: inline-flex; align-items: center; gap: 8px; border: 1px solid var(--moss); background: var(--paper); color: var(--moss-dark); border-radius: 999px; padding: 5px 10px 5px 14px; font: 500 14px Figtree, sans-serif; cursor: pointer; }
+  .chip { display: inline-flex; align-items: center; gap: 8px; border: 1px solid var(--moss); background: var(--paper); color: var(--moss-dark); border-radius: 999px; padding: 5px 10px 5px 14px; font: 500 14px var(--font); cursor: pointer; }
   .chip span { font-size: 18px; line-height: 1; }
   .chip:hover { background: #E7EFE8; }
 
@@ -56,13 +54,13 @@
   .plan svg { display: block; width: 100%; min-width: 560px; height: auto; }
   .wall { stroke: var(--ink); stroke-width: 7; stroke-linecap: round; }
   .window { stroke: #9FD0E0; stroke-width: 9; stroke-linecap: round; }
-  .lbl { font: 600 17px Figtree, sans-serif; fill: #5E5850; }
+  .lbl { font: 600 17px var(--font); fill: #5E5850; }
   .lbl.on-dark { fill: #fff; }
   .arrow { fill: var(--oak); }
   .desk { cursor: pointer; }
   .desk rect.top { fill: var(--birch); stroke: #C4A77A; stroke-width: 2.5; }
   .desk circle { fill: #2B2B2B; stroke: #2B2B2B; }
-  .desk text { font: 600 19px Figtree, sans-serif; fill: var(--ink); pointer-events: none; }
+  .desk text { font: 600 19px var(--font); fill: var(--ink); pointer-events: none; }
   .desk:hover rect.top { fill: #F8EEDA; }
   .desk.taken rect.top { fill: url(#hatch); stroke: #BDB6AA; }
   .desk.taken circle { fill: #BDB6AA; stroke: #BDB6AA; }
@@ -85,34 +83,36 @@
   .preview[hidden] { display: none; }
   .preview .photo { aspect-ratio: 4 / 5; border-radius: 10px; background: #ECE7DE; overflow: hidden; }
   .preview img { width: 100%; height: 100%; object-fit: cover; display: block; }
-  .preview h3 { font: 600 20px/1.2 "Bricolage Grotesque", Figtree, sans-serif; margin: 2px 36px 6px 0; }
+  .preview h3 { font: 600 20px/1.2 var(--font); margin: 2px 36px 6px 0; }
   .preview p { margin: 0 0 8px; font-size: 15px; }
   .preview .status { font-size: 14px; font-weight: 600; }
   .preview .status.ok { color: var(--moss); }
   .preview .status.no { color: #8D877E; }
   .preview.no-photo { grid-template-columns: 1fr; }
   .preview.no-photo .photo { display: none; }
-  .preview .close { position: absolute; top: 8px; right: 8px; width: 34px; height: 34px; border: 0; border-radius: 50%; background: #F1EDE6; color: var(--ink); font: 400 22px/1 Figtree, sans-serif; cursor: pointer; display: grid; place-items: center; }
+  .preview .close { position: absolute; top: 8px; right: 8px; width: 34px; height: 34px; border: 0; border-radius: 50%; background: #F1EDE6; color: var(--ink); font: 400 22px/1 var(--font); cursor: pointer; display: grid; place-items: center; }
   .preview .close:hover { background: #E6E0D5; }
 
   /* Form */
   .row { display: grid; grid-template-columns: 1fr 1fr; gap: 0 14px; }
   .field { display: grid; gap: 6px; margin-bottom: 14px; }
   label { font-weight: 600; font-size: 14px; }
-  textarea { font: 16px Figtree, sans-serif; padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--paper); color: var(--ink); width: 100%; resize: vertical; }
+  textarea { font: 16px var(--font); padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--paper); color: var(--ink); width: 100%; resize: vertical; }
   textarea:focus { border-color: var(--moss); }
-  input { font: 16px Figtree, sans-serif; padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--paper); color: var(--ink); width: 100%; }
+  input { font: 16px var(--font); padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--paper); color: var(--ink); width: 100%; }
   input:focus { border-color: var(--moss); }
   button:focus-visible, input:focus-visible, textarea:focus-visible, .day:focus-visible, .chip:focus-visible { outline: 3px solid var(--sun); outline-offset: 2px; }
   .subhead { font-weight: 600; margin: 10px 0 10px; padding-top: 14px; border-top: 1px dashed var(--line); }
   .subhead span, .opt { font-weight: 400; color: var(--muted); font-size: 13px; }
   .summary { margin: 6px 0 14px; font-size: 15px; }
-  .primary { width: 100%; border: 0; border-radius: 12px; padding: 16px 22px; background: var(--ink); color: #fff; font: 600 17px Figtree, sans-serif; cursor: pointer; }
+  .primary { width: 100%; border: 0; border-radius: 12px; padding: 16px 22px; background: var(--ink); color: #fff; font: 600 17px var(--font); cursor: pointer; }
   .primary:hover:not(:disabled) { background: var(--moss-dark); }
   .primary:disabled { background: #A5B2B4; cursor: not-allowed; }
   .msg { color: var(--error); margin: 12px 0 0; font-size: 15px; min-height: 1em; }
-  .secondary { border: 1.5px solid var(--ink); background: transparent; color: var(--ink); border-radius: 12px; padding: 12px 20px; font: 600 16px Figtree, sans-serif; cursor: pointer; }
+  .secondary { border: 1.5px solid var(--ink); background: transparent; color: var(--ink); border-radius: 12px; padding: 12px 20px; font: 600 16px var(--font); cursor: pointer; }
 
+  .privacy { font-size: 13px; color: var(--muted); margin: 10px 0 0; }
+  .privacy a { color: var(--moss); }
   .demo { background: #FFF6CF; border: 1px solid #E9D27A; border-radius: 10px; padding: 10px 14px; font-size: 14px; margin: 0 0 20px; }
   .loaderr { color: var(--error); }
 
@@ -188,6 +188,7 @@
         <p class="summary" id="summary"></p>
         <button class="primary" id="bookBtn" type="button" disabled>Book desk</button>
         <p class="msg" id="msg" role="alert"></p>
+        <p class="privacy">We use your details only to manage your booking and invoice. <a href="privacy.html" target="_blank" rel="noopener">Privacy policy</a></p>
       </div>
     </section>
   </div>
