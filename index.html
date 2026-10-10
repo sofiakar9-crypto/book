@@ -1,401 +1,527 @@
-/**
- * Out of Office – desk booking
- * A free Google Apps Script web app. Bookings are saved in the Google Sheet
- * this script belongs to (tab "Bookings"). Days you're closed go in the
- * tab "Closed days".
- *
- * Everything you normally need to change is in CONFIG below.
- */
-
-const CONFIG = {
-  SPACE_NAME: 'Out of Office',
-  OWNER_EMAIL: 'outofoffice.skg@gmail.com',             // where booking notices go. Leave empty to use the Google account that deploys the app
-  TIMEZONE: 'Europe/Athens',
-  DAYS_AHEAD: 30,              // people can book from today up to this many days ahead
-  CLOSED_WEEKDAYS: [0,6],        // 0 = Sunday, 1 = Monday … 6 = Saturday. Use [] to be open every day
-  ADDRESS: 'Tsimiski 56',                 // optional, shown in the customer's email
-  HOURS: '09:00–18:00',                   // optional, e.g. '09:00–19:00', shown in the customer's email
-  PHOTO_FOLDER: 'https://drive.google.com/drive/folders/1PXxHZFqHlgkZMzxVvIEcq_KQDrhF59U-?usp=share_link',            // link to the Google Drive folder with the desk photos ("Desk 1.jpg", "Desk B2.jpg" …)
-
-  // Floor plan, drawn inside a 1000 × 560 box. 0,0 is the top-left corner.
-  // Walls, windows and rooms are lines/boxes in that box. Each desk needs a unique name;
-  // the name is what appears in the sheet and in emails. chair = which side the chair is on.
-  FLOOR: { width: 1000, height: 468 },
-  ROOM: {
-    walls: [
-      [40, 40, 465, 40], [606, 40, 960, 40],          // top wall, gap = entrance
-      [960, 40, 960, 164], [960, 296, 960, 420],        // right wall, gap = window of the back room
-      [40, 420, 960, 420],                              // bottom wall
-      [40, 40, 40, 164], [40, 296, 40, 420],            // left wall, gap = window (centered)
-      [232, 40, 232, 150], [232, 310, 232, 420],        // divider between Desk 1/2 and Desk 4/3
-      [413, 40, 413, 150], [413, 310, 413, 420],        // divider after Desk 4/3
-      [514, 190, 625, 190], [672, 190, 694, 190],       // kitchen + WC top, gap = WC door
-      [514, 190, 514, 420], [603, 190, 603, 420],       // kitchen + WC sides
-      [694, 40, 694, 76], [694, 190, 694, 420]          // wall to the back room
-    ],
-    windows: [[40, 164, 40, 296], [960, 164, 960, 296]],
-    areas: [
-      { kind: 'kitchen', x: 514, y: 190, w: 89, h: 230, label: 'Kitchen' },
-      { kind: 'wc',      x: 603, y: 190, w: 91, h: 230, label: 'WC' }
-    ],
-    labels: [{ x: 535, y: 20, text: 'Entrance', arrow: true }],
-    rugs: [{ x: 745, y: 170, w: 170, h: 125 }],
-    plants: [                                   // top-view plants: size = radius, type = 'leafy' or 'palm'
-      { x: 70,  y: 146, size: 15, type: 'leafy' },
-      { x: 70,  y: 314, size: 17, type: 'leafy' },
-      { x: 310, y: 230, size: 22, type: 'palm' },
-      { x: 394, y: 138, size: 14, type: 'leafy' },
-      { x: 722, y: 312, size: 24, type: 'palm' },
-      { x: 936, y: 138, size: 14, type: 'leafy' },
-      { x: 934, y: 318, size: 17, type: 'palm' }
-    ]
-  },
-  // accent = colors of what hangs on the wall behind the desk. about = optional line shown with the photo ('' = none).
-  DESKS: [
-    { name: 'Desk 1', x: 67,   y: 57,   w: 129, h: 60, chair: 'bottom', accent: ['#B9ACE3'], about: '' },
-    { name: 'Desk 2', x: 79,   y: 346,  w: 131, h: 57, chair: 'top',    accent: ['#F2A65A', '#EE8A86', '#9C7BB5'], about: '' },
-    { name: 'Desk 3', x: 265,  y: 346,  w: 116, h: 57, chair: 'top',    accent: ['#56625A', '#E8559A'], about: '' },
-    { name: 'Desk 4', x: 268,  y: 57,   w: 121, h: 60, chair: 'bottom', accent: ['#6F8FC9', '#F2D64B'], about: '' },
-    { name: 'Desk B1', x: 760,  y: 57,   w: 119, h: 57, chair: 'bottom', accent: ['#A7B07E'], about: '' },
-    { name: 'Desk B2', x: 718,  y: 356,  w: 105, h: 50, chair: 'top',    accent: ['#E9C9A3'], about: '' },
-    { name: 'Desk B3', x: 848,  y: 356,  w: 102, h: 50, chair: 'top',    accent: ['#C49A6C', '#E8E1D6'], about: '' }
-  ]
-};
-
-const BOOKINGS = 'Bookings';
-const CLOSED = 'Closed days';
-const RESERVED = 'Reserved desks';
-const BOOKING_HEADERS = ['Date', 'Desk', 'Name', 'Email', 'Phone', 'Booking ID', 'Booked at', 'Company', 'Address', 'VAT number'];
-
-/* ---------- Web app ---------- */
-
-function doGet(e) {
-  const action = e && e.parameter && e.parameter.action;
-  if (action === 'setup') return json_(function () { return getSetup(); });
-  if (action === 'photo') return json_(function () { return { src: getDeskPhoto(e.parameter.desk) }; });
-  // No action: the old Google-hosted booking page still works
-  return HtmlService.createHtmlOutputFromFile('Index')
-    .setTitle(CONFIG.SPACE_NAME + ' – Book a desk')
-    .addMetaTag('viewport', 'width=device-width, initial-scale=1');
-}
-
-/** Bookings from the page hosted on GitHub arrive here. */
-function doPost(e) {
-  return json_(function () {
-    const req = JSON.parse((e && e.postData && e.postData.contents) || '{}');
-    if (req.action !== 'book') throw new Error('Unknown request.');
-    return book(req);
-  });
-}
-
-function json_(fn) {
-  let out;
-  try { out = { ok: true, data: fn() }; }
-  catch (err) { out = { ok: false, error: String((err && err.message) || err) }; }
-  return ContentService.createTextOutput(JSON.stringify(out)).setMimeType(ContentService.MimeType.JSON);
-}
-
-/** Run this once from the editor. It creates the tabs and asks for permissions. */
-function setupSheets() {
-  bookingsSheet_();
-  closedSheet_();
-  reservedSheet_();
-  MailApp.getRemainingDailyQuota(); // triggers the email permission prompt
-  if (CONFIG.PHOTO_FOLDER) getDeskPhoto(CONFIG.DESKS[0].name); // checks the photo folder works
-}
-
-/** Everything the booking page needs on load. */
-function getSetup() {
-  const days = windowDays_();
-  const all = addReserved_(readBooked_(), days.map(function (d) { return d.date; }));
-  const booked = {};
-  days.forEach(function (d) { if (all[d.date]) booked[d.date] = all[d.date]; });
-  return {
-    spaceName: CONFIG.SPACE_NAME,
-    daysAhead: CONFIG.DAYS_AHEAD,
-    floor: CONFIG.FLOOR,
-    room: CONFIG.ROOM,
-    desks: CONFIG.DESKS,
-    hasPhotos: !!CONFIG.PHOTO_FOLDER,
-    days: days,
-    booked: booked
-  };
-}
-
-/** Called by the page when someone presses "Book desk". */
-function book(req) {
-  req = req || {};
-  const name = clean_(req.name, 100);
-  const email = clean_(req.email, 200).toLowerCase();
-  const phone = clean_(req.phone, 30);
-  const company = clean_(req.company, 120);   // optional
-  const address = clean_(req.address, 250);
-  const vat = clean_(req.vat, 20);            // optional
-  const desk = CONFIG.DESKS.filter(function (d) { return d.name === req.desk; })[0];
-  const dates = Array.from(new Set((req.dates || []).map(String))).sort();
-
-  if (!dates.length) throw new Error('Pick at least one day.');
-  if (!desk) throw new Error('Choose a desk on the floor plan.');
-  if (!name) throw new Error('Add your name.');
-  if (!address) throw new Error('Add your address.');
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error('Check your email address. It should look like name@example.com.');
-  if (!/^[+0-9 ().\-]+$/.test(phone) || phone.replace(/\D/g, '').length < 7) throw new Error('Add a phone number with at least 7 digits.');
-  if (vat && !/^[A-Za-z0-9 .\-]+$/.test(vat)) throw new Error('A VAT number can only contain letters, numbers, spaces, dots and dashes.');
-
-  const open = {};
-  windowDays_().forEach(function (d) { if (!d.closed) open[d.date] = true; });
-  const notOpen = dates.filter(function (d) { return !open[d]; });
-  if (notOpen.length) {
-    throw new Error('Bookings aren\'t open for ' + notOpen.map(niceDate_).join(', ') + '. Remove that day and try again.');
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Out of Office – Book a desk</title>
+<meta name="description" content="Book a desk at Out of Office coworking, Thessaloniki.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Figtree:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --wall: #F6F4F0;
+    --paper: #FFFFFF;
+    --ink: #26231F;
+    --muted: #6B665E;
+    --line: #DDD6CB;
+    --moss: #3D5A45;
+    --moss-dark: #2C4333;
+    --oak: #B7793C;
+    --birch: #F0E2C6;
+    --sun: #F2D14A;
+    --error: #A8261D;
   }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--wall); color: var(--ink); font: 16px/1.5 Figtree, system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 780px; margin: 0 auto; padding: 36px 20px 72px; }
 
-  const id = 'OOO-' + Utilities.getUuid().slice(0, 6).toUpperCase();
-  const lock = LockService.getScriptLock();
-  lock.waitLock(20000);
-  try {
-    const reserved = addReserved_({}, dates);
-    const blocked = dates.filter(function (d) { return (reserved[d] || []).indexOf(desk.name) !== -1; });
-    if (blocked.length) {
-      throw new Error(desk.name + ' isn\'t available on ' + blocked.map(niceDate_).join(', ') + '. Choose another desk.');
+  .brand { margin: 0; font-weight: 600; color: var(--moss); }
+  h1 { font-family: "Bricolage Grotesque", Figtree, sans-serif; font-weight: 800; font-size: clamp(42px, 9vw, 72px); line-height: .95; letter-spacing: -.025em; margin: 8px 0 14px; }
+  .intro { color: var(--muted); max-width: 48ch; margin: 0 0 28px; }
+
+  .step { display: grid; grid-template-columns: 56px 1fr; gap: 0 12px; padding: 28px 0; border-top: 1.5px solid var(--ink); }
+  .step > div { min-width: 0; }
+  .num { font: 800 44px/1 "Bricolage Grotesque", Figtree, sans-serif; color: var(--oak); }
+  h2 { font: 600 24px/1.2 "Bricolage Grotesque", Figtree, sans-serif; margin: 6px 0 4px; }
+  .hint { color: var(--muted); margin: 0 0 16px; font-size: 15px; }
+
+  /* Calendar */
+  .cal { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; max-width: 460px; }
+  .wd { font-size: 12px; color: var(--muted); text-align: center; }
+  .day { appearance: none; border: 1px solid var(--line); background: var(--paper); color: var(--ink); border-radius: 10px; aspect-ratio: 1 / 1; min-height: 42px; padding: 0; font: 600 16px Figtree, sans-serif; cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1.1; }
+  .day small { font-size: 10px; font-weight: 500; color: var(--muted); }
+  .day:hover:not(:disabled) { border-color: var(--moss); }
+  .day[aria-pressed="true"] { background: var(--moss); border-color: var(--moss); color: #fff; }
+  .day[aria-pressed="true"] small { color: #D6E4D8; }
+  .day:disabled small { text-decoration: none; }
+  .day:disabled { background: transparent; border-style: dashed; color: #98A6A9; cursor: not-allowed; text-decoration: line-through; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+  .chip { display: inline-flex; align-items: center; gap: 8px; border: 1px solid var(--moss); background: var(--paper); color: var(--moss-dark); border-radius: 999px; padding: 5px 10px 5px 14px; font: 500 14px Figtree, sans-serif; cursor: pointer; }
+  .chip span { font-size: 18px; line-height: 1; }
+  .chip:hover { background: #E7EFE8; }
+
+  /* Floor plan */
+  .plan { background: var(--paper); border: 1px solid var(--line); border-radius: 14px; padding: 8px; overflow-x: auto; }
+  .plan svg { display: block; width: 100%; min-width: 560px; height: auto; }
+  .wall { stroke: var(--ink); stroke-width: 7; stroke-linecap: round; }
+  .window { stroke: #9FD0E0; stroke-width: 9; stroke-linecap: round; }
+  .lbl { font: 600 17px Figtree, sans-serif; fill: #5E5850; }
+  .lbl.on-dark { fill: #fff; }
+  .arrow { fill: var(--oak); }
+  .desk { cursor: pointer; }
+  .desk rect.top { fill: var(--birch); stroke: #C4A77A; stroke-width: 2.5; }
+  .desk circle { fill: #2B2B2B; stroke: #2B2B2B; }
+  .desk text { font: 600 19px Figtree, sans-serif; fill: var(--ink); pointer-events: none; }
+  .desk:hover rect.top { fill: #F8EEDA; }
+  .desk.taken rect.top { fill: url(#hatch); stroke: #BDB6AA; }
+  .desk.taken circle { fill: #BDB6AA; stroke: #BDB6AA; }
+  .desk.taken text { fill: #8D877E; }
+  .desk.mine rect.top { fill: var(--moss); stroke: var(--moss-dark); }
+  .desk.mine text { fill: #fff; }
+  .desk.idle { opacity: .6; }
+  .desk.viewing rect.top { stroke: var(--ink); stroke-width: 4; }
+  .desk:focus { outline: none; }
+  .desk:focus-visible rect.top { stroke: var(--sun); stroke-width: 6; }
+  .legend { display: flex; flex-wrap: wrap; gap: 18px; margin-top: 12px; font-size: 14px; color: var(--muted); }
+  .legend i { display: inline-block; width: 16px; height: 16px; border-radius: 4px; vertical-align: -3px; margin-right: 6px; border: 2px solid #C4A77A; background: var(--birch); }
+  .legend .l-taken { border-color: #BDB6AA; background: repeating-linear-gradient(45deg, #EFECE6 0 3px, #CFC8BC 3px 6px); }
+  .legend .l-mine { border-color: var(--moss-dark); background: var(--moss); }
+
+  /* Desk photo: floats on top of the plan */
+  .planwrap { position: relative; }
+  .preview { position: absolute; top: 10px; right: 10px; z-index: 2; width: min(390px, calc(100% - 20px)); display: grid; grid-template-columns: 120px 1fr; gap: 14px; align-items: start; padding: 12px; background: var(--paper); border: 1px solid var(--line); border-radius: 14px; box-shadow: 0 12px 32px rgba(38, 35, 31, .22); }
+  .preview.left { right: auto; left: 10px; }
+  .preview[hidden] { display: none; }
+  .preview .photo { aspect-ratio: 4 / 5; border-radius: 10px; background: #ECE7DE; overflow: hidden; }
+  .preview img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .preview h3 { font: 600 20px/1.2 "Bricolage Grotesque", Figtree, sans-serif; margin: 2px 36px 6px 0; }
+  .preview p { margin: 0 0 8px; font-size: 15px; }
+  .preview .status { font-size: 14px; font-weight: 600; }
+  .preview .status.ok { color: var(--moss); }
+  .preview .status.no { color: #8D877E; }
+  .preview.no-photo { grid-template-columns: 1fr; }
+  .preview.no-photo .photo { display: none; }
+  .preview .close { position: absolute; top: 8px; right: 8px; width: 34px; height: 34px; border: 0; border-radius: 50%; background: #F1EDE6; color: var(--ink); font: 400 22px/1 Figtree, sans-serif; cursor: pointer; display: grid; place-items: center; }
+  .preview .close:hover { background: #E6E0D5; }
+
+  /* Form */
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 0 14px; }
+  .field { display: grid; gap: 6px; margin-bottom: 14px; }
+  label { font-weight: 600; font-size: 14px; }
+  input { font: 16px Figtree, sans-serif; padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--paper); color: var(--ink); width: 100%; }
+  input:focus { border-color: var(--moss); }
+  button:focus-visible, input:focus-visible, .day:focus-visible, .chip:focus-visible { outline: 3px solid var(--sun); outline-offset: 2px; }
+  .subhead { font-weight: 600; margin: 10px 0 10px; padding-top: 14px; border-top: 1px dashed var(--line); }
+  .subhead span, .opt { font-weight: 400; color: var(--muted); font-size: 13px; }
+  .summary { margin: 6px 0 14px; font-size: 15px; }
+  .primary { width: 100%; border: 0; border-radius: 12px; padding: 16px 22px; background: var(--ink); color: #fff; font: 600 17px Figtree, sans-serif; cursor: pointer; }
+  .primary:hover:not(:disabled) { background: var(--moss-dark); }
+  .primary:disabled { background: #A5B2B4; cursor: not-allowed; }
+  .msg { color: var(--error); margin: 12px 0 0; font-size: 15px; min-height: 1em; }
+  .secondary { border: 1.5px solid var(--ink); background: transparent; color: var(--ink); border-radius: 12px; padding: 12px 20px; font: 600 16px Figtree, sans-serif; cursor: pointer; }
+
+  .demo { background: #FFF6CF; border: 1px solid #E9D27A; border-radius: 10px; padding: 10px 14px; font-size: 14px; margin: 0 0 20px; }
+  .loaderr { color: var(--error); }
+
+  /* Done */
+  .done { border-top: 1.5px solid var(--ink); padding-top: 28px; }
+  .done h2 { font-size: 34px; }
+  .done ul { padding-left: 20px; }
+
+  @media (max-width: 560px) {
+    .step { grid-template-columns: 1fr; }
+    .num { font-size: 30px; }
+    .row { grid-template-columns: 1fr; }
+    .preview { grid-template-columns: 88px 1fr; gap: 10px; padding: 10px; }
+    .preview p { font-size: 14px; }
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .day, .chip, .desk rect, .primary { transition: background-color .15s, border-color .15s, fill .15s; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <p class="brand" id="brand">Out of Office</p>
+  <h1>Book a desk</h1>
+  <p class="intro">Pick your days, choose a desk on the floor plan, and you’ll get a confirmation by email.</p>
+
+  <p class="demo" id="demoNote" hidden>Preview mode: this page is open outside Google Apps Script, so it shows sample data. Bookings aren’t saved and no emails are sent. </p>
+  <p class="hint" id="loading">Loading free desks…</p>
+
+  <div id="app" hidden>
+    <section class="step">
+      <div class="num" aria-hidden="true">1</div>
+      <div>
+        <h2>Pick your days</h2>
+        <p class="hint" id="daysHint">Tap a day to add it. Tap it again to remove it.</p>
+        <div class="cal" id="cal"></div>
+        <div class="chips" id="chips" aria-label="Selected days"></div>
+      </div>
+    </section>
+
+    <section class="step">
+      <div class="num" aria-hidden="true">2</div>
+      <div>
+        <h2>Choose your desk</h2>
+        <p class="hint" id="planHint">Tap a desk to see a photo. Pick your days first to book one.</p>
+        <div class="planwrap">
+          <div class="plan"><svg id="plan" role="group" aria-label="Floor plan" xmlns="http://www.w3.org/2000/svg"></svg></div>
+          <div class="preview" id="preview" hidden aria-live="polite">
+            <button type="button" class="close" id="pClose" aria-label="Close desk preview">×</button>
+            <div class="photo"><img id="pImg" alt=""></div>
+            <div><h3 id="pName"></h3><p id="pAbout"></p><p class="status" id="pStatus"></p></div>
+          </div>
+        </div>
+        <div class="legend"><span><i></i>Free</span><span><i class="l-taken"></i>Taken</span><span><i class="l-mine"></i>Your desk</span></div>
+
+      </div>
+    </section>
+
+    <section class="step">
+      <div class="num" aria-hidden="true">3</div>
+      <div>
+        <h2>Your details</h2>
+        <div class="field"><label for="name">Full name</label><input id="name" autocomplete="name"></div>
+        <div class="row">
+          <div class="field"><label for="email">Email</label><input id="email" type="email" autocomplete="email" inputmode="email"></div>
+          <div class="field"><label for="phone">Phone</label><input id="phone" type="tel" autocomplete="tel" inputmode="tel"></div>
+        </div>
+        <div class="field"><label for="address">Address</label><input id="address" autocomplete="street-address"></div>
+        <p class="subhead">For your invoice <span>(optional)</span></p>
+        <div class="field"><label for="company">Company name</label><input id="company" autocomplete="organization"></div>
+        <div class="field"><label for="vat">VAT number</label><input id="vat" autocomplete="off" spellcheck="false"></div>
+        <p class="summary" id="summary"></p>
+        <button class="primary" id="bookBtn" type="button" disabled>Book desk</button>
+        <p class="msg" id="msg" role="alert"></p>
+      </div>
+    </section>
+  </div>
+
+  <div class="done" id="done" hidden></div>
+</main>
+
+<script>
+  const $ = id => document.getElementById(id);
+  const state = { setup: null, dates: new Set(), desk: null, viewing: null, sending: false };
+  const photos = {};
+
+  const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  function fmt(key, opts) {
+    const [y, m, d] = key.split('-').map(Number);
+    return new Date(Date.UTC(y, m - 1, d, 12)).toLocaleDateString('en-GB', Object.assign({ timeZone: 'UTC' }, opts));
+  }
+  const short = key => fmt(key, { weekday: 'short', day: 'numeric', month: 'short' });
+
+  /* ---------- Server calls (with a preview mode outside Apps Script) ---------- */
+  // Your Google Apps Script link. Bookings, emails and photos all go through it.
+  const API_URL = 'https://script.google.com/macros/s/AKfycbycrPefjRatt4X_v4MHzNpcdyuSvDNwAEhkuyDG9icW3oW2r-5QKX68g_tbExjeF5k8/exec';
+  const LIVE = !!API_URL;
+  // Copy of the settings from Code.gs, used ONLY in preview mode. The live page always uses Code.gs.
+  const DEMO = {"spaceName":"Out of Office","daysAhead":30,"closedWeekdays":[0,6],"floor":{"width":1000,"height":468},"room":{"walls":[[40,40,465,40],[606,40,960,40],[960,40,960,164],[960,296,960,420],[40,420,960,420],[40,40,40,164],[40,296,40,420],[232,40,232,150],[232,310,232,420],[413,40,413,150],[413,310,413,420],[514,190,625,190],[672,190,694,190],[514,190,514,420],[603,190,603,420],[694,40,694,76],[694,190,694,420]],"windows":[[40,164,40,296],[960,164,960,296]],"areas":[{"kind":"kitchen","x":514,"y":190,"w":89,"h":230,"label":"Kitchen"},{"kind":"wc","x":603,"y":190,"w":91,"h":230,"label":"WC"}],"labels":[{"x":535,"y":20,"text":"Entrance","arrow":true}],"rugs":[{"x":745,"y":170,"w":170,"h":125}],"plants":[{"x":70,"y":146,"size":15,"type":"leafy"},{"x":70,"y":314,"size":17,"type":"leafy"},{"x":310,"y":230,"size":22,"type":"palm"},{"x":394,"y":138,"size":14,"type":"leafy"},{"x":722,"y":312,"size":24,"type":"palm"},{"x":936,"y":138,"size":14,"type":"leafy"},{"x":934,"y":318,"size":17,"type":"palm"}]},"desks":[{"name":"Desk 1","x":67,"y":57,"w":129,"h":60,"chair":"bottom","accent":["#B9ACE3"],"about":""},{"name":"Desk 2","x":79,"y":346,"w":131,"h":57,"chair":"top","accent":["#F2A65A","#EE8A86","#9C7BB5"],"about":""},{"name":"Desk 3","x":265,"y":346,"w":116,"h":57,"chair":"top","accent":["#56625A","#E8559A"],"about":""},{"name":"Desk 4","x":268,"y":57,"w":121,"h":60,"chair":"bottom","accent":["#6F8FC9","#F2D64B"],"about":""},{"name":"Desk B1","x":760,"y":57,"w":119,"h":57,"chair":"bottom","accent":["#A7B07E"],"about":""},{"name":"Desk B2","x":718,"y":356,"w":105,"h":50,"chair":"top","accent":["#E9C9A3"],"about":""},{"name":"Desk B3","x":848,"y":356,"w":102,"h":50,"chair":"top","accent":["#C49A6C","#E8E1D6"],"about":""}]};
+  const demoBooked = {};
+  function demoSetup() {
+    const now = new Date(), days = [];
+    for (let i = 0; i < DEMO.daysAhead; i++) {
+      const d = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate() + i, 12));
+      days.push({ date: d.toISOString().slice(0, 10), weekday: d.getUTCDay(), closed: DEMO.closedWeekdays.includes(d.getUTCDay()) });
     }
-    const booked = readBooked_();
-    const clash = dates.filter(function (d) { return (booked[d] || []).indexOf(desk.name) !== -1; });
-    if (clash.length) {
-      throw new Error(desk.name + ' was just booked by someone else for ' + clash.map(niceDate_).join(', ') +
-        '. Choose another desk or remove that day.');
+    return { spaceName: DEMO.spaceName, daysAhead: DEMO.daysAhead, floor: DEMO.floor, room: DEMO.room, desks: DEMO.desks,
+      hasPhotos: !!window.DEMO_PHOTOS, days, booked: JSON.parse(JSON.stringify(demoBooked)) };
+  }
+  function api(fn, arg, ok, fail) {
+    if (LIVE) {
+      let req;
+      if (fn === 'getSetup') req = fetch(API_URL + '?action=setup');
+      else if (fn === 'getDeskPhoto') req = fetch(API_URL + '?action=photo&desk=' + encodeURIComponent(arg));
+      else if (fn === 'book') req = fetch(API_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(Object.assign({ action: 'book' }, arg)) });
+      return req.then(r => r.json())
+        .then(res => res.ok ? ok(fn === 'getDeskPhoto' ? res.data.src : res.data) : fail(new Error(res.error)))
+        .catch(() => fail(new Error('No connection. Check your internet and try again.')));
     }
-    const now = Utilities.formatDate(new Date(), CONFIG.TIMEZONE, 'yyyy-MM-dd HH:mm');
-    const rows = dates.map(function (d) { return [d, desk.name, name, email, phone, id, now, company, address, vat]; });
-    const sh = bookingsSheet_();
-    sh.getRange(sh.getLastRow() + 1, 1, rows.length, rows[0].length).setValues(rows);
-    SpreadsheetApp.flush();
-  } finally {
-    lock.releaseLock();
+    setTimeout(() => {
+      try {
+        if (fn === 'getSetup') ok(demoSetup());
+        else if (fn === 'getDeskPhoto') ok((window.DEMO_PHOTOS || {})[arg] || null);
+        else if (fn === 'book') {
+          arg.dates.forEach(d => (demoBooked[d] = demoBooked[d] || []).push(arg.desk));
+          ok({ id: 'OOO-DEMO01', desk: arg.desk, dates: arg.dates, email: arg.email, emailed: true });
+        }
+      } catch (e) { fail(e); }
+    }, 150);
   }
 
-  let emailed = true;
-  try {
-    sendEmails_({ id: id, desk: desk.name, dates: dates, name: name, email: email, phone: phone, company: company, address: address, vat: vat });
-  } catch (e) {
-    emailed = false; // booking is saved even if the email fails (e.g. daily email limit reached)
-    console.error(e);
-  }
-  return { id: id, desk: desk.name, dates: dates, email: email, emailed: emailed };
-}
-
-/** Returns the photo for one desk as a data URL, or null if there isn't one. */
-function getDeskPhoto(deskName) {
-  if (!CONFIG.PHOTO_FOLDER) return null;
-  const want = photoKey_(deskName);
-  const files = photoFolder_().getFiles();
-  while (files.hasNext()) {
-    const f = files.next();
-    if (photoKey_(f.getName()) === want && /^image\//.test(f.getMimeType())) {
-      const blob = f.getBlob();
-      if (blob.getBytes().length > 4000000) return null; // too big, upload the smaller version
-      return 'data:' + blob.getContentType() + ';base64,' + Utilities.base64Encode(blob.getBytes());
-    }
-  }
-  return null;
-}
-
-/** Run this from the editor to check the photos. The result shows in the Execution log. */
-function testPhotos() {
-  const names = [];
-  const files = photoFolder_().getFiles();
-  while (files.hasNext()) { const f = files.next(); names.push(f.getName() + ' (' + f.getMimeType() + ')'); }
-  console.log('Files in the photo folder:\n' + names.join('\n'));
-  CONFIG.DESKS.forEach(function (d) {
-    console.log(d.name + ': ' + (getDeskPhoto(d.name) ? 'photo found' : 'NO PHOTO, check the file name'));
-  });
-}
-
-function photoFolder_() {
-  const idMatch = String(CONFIG.PHOTO_FOLDER).match(/folders\/([-\w]+)/);
-  return DriveApp.getFolderById(idMatch ? idMatch[1] : String(CONFIG.PHOTO_FOLDER).trim());
-}
-
-/** "Desk B2.jpg", "desk b2 (1).jpeg", "Desk_B2.JPG" all become "deskb2". */
-function photoKey_(s) {
-  return String(s).replace(/\.[^.]+$/, '').replace(/\(\d+\)/g, '').replace(/[^a-z0-9]/gi, '').toLowerCase();
-}
-
-/* ---------- Emails ---------- */
-
-function sendEmails_(b) {
-  const owner = CONFIG.OWNER_EMAIL || Session.getEffectiveUser().getEmail();
-  const list = '<ul>' + b.dates.map(function (d) { return '<li>' + niceDate_(d) + '</li>'; }).join('') + '</ul>';
-  const extra = [
-    CONFIG.ADDRESS ? 'Address: ' + esc_(CONFIG.ADDRESS) : '',
-    CONFIG.HOURS ? 'Opening hours: ' + esc_(CONFIG.HOURS) : ''
-  ].filter(String).map(function (l) { return '<p>' + l + '</p>'; }).join('');
-  const inv = [
-    b.company ? 'Company: ' + esc_(b.company) : '',
-    b.vat ? 'VAT number: ' + esc_(b.vat) : ''
-  ].filter(String);
-  const invoice = inv.length ? '<p><b>Invoice details</b><br>' + inv.join('<br>') + '</p>' : '';
-  const dayWord = b.dates.length === 1 ? '1 day' : b.dates.length + ' days';
-
-  MailApp.sendEmail({
-    to: b.email,
-    replyTo: owner,
-    name: CONFIG.SPACE_NAME,
-    subject: 'Your desk at ' + CONFIG.SPACE_NAME + ' is booked (' + b.desk + ', ' + dayWord + ')',
-    htmlBody:
-      '<p>Hi ' + esc_(b.name) + ',</p>' +
-      '<p>Your desk at ' + esc_(CONFIG.SPACE_NAME) + ' is booked.</p>' +
-      '<p><b>' + esc_(b.desk) + '</b></p>' + list + extra +
-      '<p>Booking reference: ' + b.id + '</p>' + invoice +
-      '<p>Need to change or cancel? Just reply to this email.</p>' +
-      '<p>See you soon,<br>' + esc_(CONFIG.SPACE_NAME) + '</p>'
-  });
-
-  MailApp.sendEmail({
-    to: owner,
-    replyTo: b.email,
-    name: CONFIG.SPACE_NAME + ' bookings',
-    subject: 'New booking: ' + b.name + ', ' + b.desk + ', ' + dayWord,
-    htmlBody:
-      '<p><b>' + esc_(b.name) + '</b> booked <b>' + esc_(b.desk) + '</b>.</p>' + list +
-      '<p>Email: ' + esc_(b.email) + '<br>Phone: ' + esc_(b.phone) + '<br>Address: ' + esc_(b.address) + '<br>Reference: ' + b.id + '</p>' + invoice +
-      '<p>To cancel, delete the rows with this reference in the Bookings tab.</p>'
-  });
-}
-
-/* ---------- Sheet helpers ---------- */
-
-function bookingsSheet_() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  let sh = ss.getSheetByName(BOOKINGS);
-  if (!sh) {
-    sh = ss.insertSheet(BOOKINGS);
-    sh.getRange('A:J').setNumberFormat('@'); // plain text, so dates and phone numbers stay exactly as written
-    sh.getRange(1, 1, 1, BOOKING_HEADERS.length).setValues([BOOKING_HEADERS]).setFontWeight('bold');
-    sh.setFrozenRows(1);
-  }
-  if (sh.getRange(1, BOOKING_HEADERS.length).getValue() !== BOOKING_HEADERS[BOOKING_HEADERS.length - 1]) {
-    // older sheet without the invoice columns: add them
-    sh.getRange('H:J').setNumberFormat('@');
-    sh.getRange(1, 1, 1, BOOKING_HEADERS.length).setValues([BOOKING_HEADERS]).setFontWeight('bold');
-  }
-  return sh;
-}
-
-function closedSheet_() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  let sh = ss.getSheetByName(CLOSED);
-  if (!sh) {
-    sh = ss.insertSheet(CLOSED);
-    sh.getRange(1, 1, 1, 2).setValues([['Date', 'Note (optional)']]).setFontWeight('bold');
-    sh.setFrozenRows(1);
-  }
-  return sh;
-}
-
-/**
- * Tab "Reserved desks": one row per desk that can't be booked.
- * From/To empty = never bookable. With dates = not bookable on those days (both included).
- */
-function reservedSheet_() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  let sh = ss.getSheetByName(RESERVED);
-  if (!sh) {
-    sh = ss.insertSheet(RESERVED);
-    sh.getRange(1, 1, 2, 4).setValues([
-      ['Desk', 'From (empty = always)', 'To (empty = always)', 'Note (optional)'],
-      ['Desk 2', '', '', 'My own desk']
-    ]);
-    sh.getRange(1, 1, 1, 4).setFontWeight('bold');
-    sh.setFrozenRows(1);
-    sh.autoResizeColumns(1, 4);
-  }
-  return sh;
-}
-
-/** Adds reserved desks to the booked map for the given days. */
-function addReserved_(map, dateKeys) {
-  const sh = reservedSheet_();
-  const last = sh.getLastRow();
-  if (last < 2) return map;
-  const tz = SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetTimeZone();
-  const names = {};
-  CONFIG.DESKS.forEach(function (d) { names[d.name.toLowerCase()] = d.name; });
-  sh.getRange(2, 1, last - 1, 3).getValues().forEach(function (row) {
-    const desk = names[String(row[0]).trim().toLowerCase()];
-    if (!desk) return;
-    const from = toKey_(row[1], tz), to = toKey_(row[2], tz);
-    dateKeys.forEach(function (k) {
-      if ((from && k < from) || (to && k > to)) return;
-      const list = map[k] = map[k] || [];
-      if (list.indexOf(desk) === -1) list.push(desk);
+  /* ---------- Loading ---------- */
+  function load() {
+    $('demoNote').hidden = !!LIVE;
+    api('getSetup', undefined, s => { state.setup = s; afterLoad(); }, err => {
+      const el = $('loading');
+      el.hidden = false; el.className = 'hint loaderr';
+      el.textContent = 'The booking page couldn’t load: ' + ((err && err.message) || err || 'unknown error') + '. Refresh the page to try again.';
     });
-  });
-  return map;
-}
-
-/** Returns { 'yyyy-MM-dd': ['Desk 1', 'Desk 4'], ... } */
-function readBooked_() {
-  const sh = bookingsSheet_();
-  const last = sh.getLastRow();
-  const map = {};
-  if (last < 2) return map;
-  const tz = SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetTimeZone();
-  const names = {};
-  CONFIG.DESKS.forEach(function (d) { names[d.name.toLowerCase()] = d.name; });
-  sh.getRange(2, 1, last - 1, 2).getValues().forEach(function (row) {
-    const key = toKey_(row[0], tz);
-    const desk = names[String(row[1]).trim().toLowerCase()];
-    if (!key || !desk) return;
-    (map[key] = map[key] || []).push(desk);
-  });
-  return map;
-}
-
-function readClosed_() {
-  const sh = closedSheet_();
-  const last = sh.getLastRow();
-  const set = {};
-  if (last < 2) return set;
-  const tz = SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetTimeZone();
-  sh.getRange(2, 1, last - 1, 1).getValues().forEach(function (row) {
-    const key = toKey_(row[0], tz);
-    if (key) set[key] = true;
-  });
-  return set;
-}
-
-/** The bookable window: today + the next DAYS_AHEAD - 1 days. */
-function windowDays_() {
-  const p = Utilities.formatDate(new Date(), CONFIG.TIMEZONE, 'yyyy-MM-dd').split('-').map(Number);
-  const closed = readClosed_();
-  const days = [];
-  for (let i = 0; i < CONFIG.DAYS_AHEAD; i++) {
-    const d = new Date(Date.UTC(p[0], p[1] - 1, p[2] + i, 12));
-    const key = Utilities.formatDate(d, 'UTC', 'yyyy-MM-dd');
-    const wd = d.getUTCDay();
-    days.push({ date: key, weekday: wd, closed: CONFIG.CLOSED_WEEKDAYS.indexOf(wd) !== -1 || !!closed[key] });
   }
-  return days;
-}
 
-/* ---------- Small utilities ---------- */
+  function afterLoad() {
+    const s = state.setup;
+    const open = new Set(s.days.filter(d => !d.closed && !isFull(d.date)).map(d => d.date));
+    [...state.dates].forEach(d => { if (!open.has(d)) state.dates.delete(d); });
+    $('brand').textContent = s.spaceName;
+    $('daysHint').textContent = `Tap a day to add it. Tap it again to remove it. You can book up to ${s.daysAhead} days ahead.`;
+    $('loading').hidden = true;
+    $('app').hidden = false;
+    render();
+    if (s.hasPhotos) s.desks.forEach(d => loadPhoto(d.name));
+  }
 
-function toKey_(v, tz) {
-  if (v instanceof Date) return Utilities.formatDate(v, tz, 'yyyy-MM-dd');
-  return String(v || '').trim();
-}
+  const isFull = date => (state.setup.booked[date] || []).length >= state.setup.desks.length;
+  function taken() {
+    const t = new Set();
+    state.dates.forEach(d => (state.setup.booked[d] || []).forEach(n => t.add(n)));
+    return t;
+  }
 
-function niceDate_(key) {
-  const p = key.split('-').map(Number);
-  return Utilities.formatDate(new Date(Date.UTC(p[0], p[1] - 1, p[2], 12)), 'UTC', 'EEE d MMM yyyy');
-}
+  /* ---------- Rendering ---------- */
+  function render() {
+    if (state.desk && taken().has(state.desk)) state.desk = null;
+    renderCal(); renderChips(); renderPlan(); renderSummary();
+  }
 
-function clean_(v, max) {
-  return String(v == null ? '' : v).trim().slice(0, max);
-}
+  function renderCal() {
+    const days = state.setup.days;
+    let html = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(w => `<div class="wd" aria-hidden="true">${w}</div>`).join('');
+    html += '<div></div>'.repeat((days[0].weekday + 6) % 7);
+    days.forEach((d, i) => {
+      const dayNum = Number(d.date.slice(8));
+      const full = !d.closed && isFull(d.date);
+      const on = state.dates.has(d.date);
+      const month = (i === 0 || dayNum === 1) ? fmt(d.date, { month: 'short' }) : '&nbsp;';
+      const status = d.closed ? ', closed' : full ? ', fully booked' : '';
+      html += `<button type="button" class="day" data-date="${d.date}" aria-pressed="${on}" ${d.closed || full ? 'disabled' : ''}
+        aria-label="${fmt(d.date, { weekday: 'long', day: 'numeric', month: 'long' })}${status}" title="${d.closed ? 'Closed' : full ? 'Fully booked' : ''}"><small>${month}</small>${dayNum}</button>`;
+    });
+    $('cal').innerHTML = html;
+  }
 
-function esc_(s) {
-  return String(s).replace(/[&<>"']/g, function (c) {
-    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+  function renderChips() {
+    $('chips').innerHTML = [...state.dates].sort().map(d =>
+      `<button type="button" class="chip" data-date="${d}" aria-label="Remove ${fmt(d, { weekday: 'long', day: 'numeric', month: 'long' })}">${short(d)}<span aria-hidden="true">×</span></button>`
+    ).join('');
+  }
+
+  function plant(p) {
+    const r = p.size || 16;
+    let g = `<circle cx="${p.x}" cy="${p.y}" r="${r * .55}" fill="#EDE6D8" stroke="#CFC4B0" stroke-width="2"/>`;
+    const n = p.type === 'palm' ? 9 : 6;
+    for (let i = 0; i < n; i++) {
+      const a = (360 / n) * i + (p.type === 'palm' ? 10 : 25);
+      const fill = i % 2 ? '#4E7A4B' : '#6E9A5E';
+      g += p.type === 'palm'
+        ? `<path d="M${p.x} ${p.y} q${r * .25} ${-r * .55} 0 ${-r} q${-r * .25} ${r * .45} 0 ${r}z" fill="${fill}" transform="rotate(${a} ${p.x} ${p.y})"/>`
+        : `<ellipse cx="${p.x}" cy="${p.y - r * .5}" rx="${r * .3}" ry="${r * .5}" fill="${fill}" transform="rotate(${a} ${p.x} ${p.y})"/>`;
+    }
+    return `<g aria-hidden="true">${g}</g>`;
+  }
+
+  function accent(d) {
+    const cols = d.accent || [];
+    if (!cols.length) return '';
+    const side = d.chair || 'bottom', len = Math.min(d.w * .7, 26 * cols.length + 20), seg = len / cols.length;
+    const y = side === 'bottom' ? d.y - 12 : d.y + d.h + 6;
+    const x0 = d.x + (d.w - len) / 2;
+    return cols.map((c, i) => `<rect x="${x0 + i * seg}" y="${y}" width="${seg}" height="6" rx="2" fill="${c}"/>`).join('');
+  }
+
+  function statusOf(name) {
+    if (!state.dates.size) return 'idle';
+    if (taken().has(name)) return 'taken';
+    return state.desk === name ? 'mine' : 'free';
+  }
+
+  function renderPlan() {
+    const s = state.setup, has = state.dates.size > 0, t = taken();
+    const W = s.floor.width, H = s.floor.height, R = s.room;
+    let g = `<defs>
+      <pattern id="hatch" width="10" height="10" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="10" height="10" fill="#EFECE6"/><line x1="0" y1="0" x2="0" y2="10" stroke="#CFC8BC" stroke-width="5"/></pattern>
+      <pattern id="oak" width="28" height="28" patternUnits="userSpaceOnUse">
+        <rect width="28" height="28" fill="#EBCB9F"/>
+        <path d="M0 14 L14 0 M14 28 L28 14 M0 14 L14 28 M14 0 L28 14" stroke="#DDB684" stroke-width="1.5" fill="none"/>
+      </pattern>
+      <pattern id="laminate" width="60" height="14" patternUnits="userSpaceOnUse"><rect width="60" height="14" fill="#ECE6DB"/><path d="M0 13.5H60M30 0V14" stroke="#DCD3C4" stroke-width="1.5"/></pattern>
+      <pattern id="tile" width="16" height="16" patternUnits="userSpaceOnUse"><rect width="16" height="16" fill="#EEF1F2"/><path d="M16 0H0V16" fill="none" stroke="#D8DEE0" stroke-width="1.5"/></pattern>
+    </defs>`;
+    g += `<rect x="40" y="40" width="${W - 80}" height="${H - 88}" fill="url(#oak)"/>`;
+    (R.areas || []).forEach(a => {
+      const fill = a.kind === 'kitchen' ? 'url(#laminate)' : 'url(#tile)';
+      g += `<rect x="${a.x}" y="${a.y}" width="${a.w}" height="${a.h}" fill="${fill}"/>`;
+      if (a.kind === 'kitchen') g += `<rect x="${a.x + 4}" y="${a.y + 6}" width="18" height="${a.h - 12}" rx="3" fill="#8BAA83"/>`;
+    });
+    (R.rugs || []).forEach(r => { g += `<rect x="${r.x}" y="${r.y}" width="${r.w}" height="${r.h}" rx="8" fill="#5E7462" opacity=".7"/>`; });
+    (R.windows || []).forEach(w => { g += `<line class="window" x1="${w[0]}" y1="${w[1]}" x2="${w[2]}" y2="${w[3]}"/>`; });
+    (R.walls || []).forEach(w => { g += `<line class="wall" x1="${w[0]}" y1="${w[1]}" x2="${w[2]}" y2="${w[3]}"/>`; });
+    (R.areas || []).forEach(a => {
+      if (a.label) g += `<text class="lbl" x="${a.x + a.w / 2 + (a.kind === 'kitchen' ? 9 : 0)}" y="${a.y + a.h / 2}" text-anchor="middle" dominant-baseline="central">${esc(a.label)}</text>`;
+    });
+    (R.labels || []).forEach(l => {
+      g += `<text class="lbl" x="${l.x}" y="${l.y}" text-anchor="middle" dominant-baseline="central">${esc(l.text)}</text>`;
+      if (l.arrow) g += `<path class="arrow" d="M${l.x - 9} ${l.y + 26} h18 l-9 12 z"/>`;
+    });
+    (R.plants || []).forEach(p => { g += plant(p); });
+    s.desks.forEach(d => {
+      const st = statusOf(d.name);
+      const label = { idle: 'pick your days first', taken: 'taken', mine: 'selected', free: 'free' }[st];
+      g += `<g class="desk ${st}${state.viewing === d.name ? ' viewing' : ''}" data-desk="${esc(d.name)}" tabindex="0" role="button" aria-label="${esc(d.name)}, ${label}">
+        ${accent(d)}${chair(d)}
+        <rect class="top" x="${d.x}" y="${d.y}" width="${d.w}" height="${d.h}" rx="6"/>
+        <text x="${d.x + d.w / 2}" y="${d.y + d.h / 2}" text-anchor="middle" dominant-baseline="central">${esc(d.name)}</text></g>`;
+    });
+    const svg = $('plan');
+    svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+    svg.innerHTML = g;
+
+    const free = s.desks.filter(d => !t.has(d.name)).length;
+    $('planHint').textContent = !has ? 'Tap a desk to see a photo. Pick your days first to book one.'
+      : free === 0 ? 'No desk is free on all of your days. Remove a day to see more desks.'
+      : state.dates.size > 1 ? 'Desks shown as free are free on all of your days. Tap one to choose it.'
+      : 'Tap a free desk to choose it.';
+    renderPreview();
+  }
+
+  function renderPreview() {
+    const name = state.viewing, box = $('preview');
+    if (!name) { box.hidden = true; return; }
+    const d = state.setup.desks.find(x => x.name === name);
+    if (!d) { box.hidden = true; return; }
+    box.hidden = false;
+    box.classList.toggle('left', d.x + d.w / 2 > state.setup.floor.width / 2);
+    $('pName').textContent = d.name;
+    $('pAbout').textContent = d.about || '';
+    $('pAbout').hidden = !d.about;
+    const st = statusOf(d.name), el = $('pStatus');
+    el.className = 'status ' + (st === 'mine' ? 'ok' : st === 'free' ? '' : 'no');
+    el.textContent = { idle: 'Pick your days above to book this desk.', taken: 'Taken on one or more of your days.', mine: 'This is your desk. Tap it again to unselect it.', free: 'Free on your days. Tap it on the plan to choose it.' }[st];
+    const src = photos[d.name];
+    box.classList.toggle('no-photo', !state.setup.hasPhotos || src === null);
+    const img = $('pImg');
+    if (src) { img.src = src; img.alt = 'Photo of ' + d.name; }
+    else { img.removeAttribute('src'); img.alt = ''; }
+    if (state.setup.hasPhotos && !(d.name in photos)) loadPhoto(d.name);
+  }
+
+  function loadPhoto(name) {
+    if (name in photos) return;
+    photos[name] = undefined; // loading
+    api('getDeskPhoto', name,
+      src => { photos[name] = src || null; if (state.viewing === name) renderPreview(); },
+      () => { photos[name] = null; if (state.viewing === name) renderPreview(); });
+  }
+
+  function chair(d) {
+    const side = d.chair || 'bottom', gap = 20;
+    const cx = side === 'left' ? d.x - gap : side === 'right' ? d.x + d.w + gap : d.x + d.w / 2;
+    const cy = side === 'top' ? d.y - gap : side === 'bottom' ? d.y + d.h + gap : d.y + d.h / 2;
+    return `<circle cx="${cx}" cy="${cy}" r="14"/>`;
+  }
+
+  function renderSummary() {
+    const n = state.dates.size;
+    let text;
+    if (!n) text = 'Pick at least one day to continue.';
+    else if (!state.desk) text = 'Choose a desk on the floor plan to continue.';
+    else text = `${state.desk}, ${n === 1 ? '1 day' : n + ' days'}: ${[...state.dates].sort().map(short).join(', ')}`;
+    $('summary').textContent = text;
+    const filled = ['name', 'email', 'phone', 'address'].every(id => $(id).value.trim());
+    $('bookBtn').disabled = state.sending || !n || !state.desk || !filled;
+  }
+
+  /* ---------- Interaction ---------- */
+  function toggleDate(date) {
+    state.dates.has(date) ? state.dates.delete(date) : state.dates.add(date);
+    $('msg').textContent = '';
+    render();
+  }
+
+  $('cal').addEventListener('click', e => {
+    const b = e.target.closest('.day');
+    if (!b || b.disabled) return;
+    toggleDate(b.dataset.date);
+    const again = $('cal').querySelector(`[data-date="${b.dataset.date}"]`);
+    if (again) again.focus();
   });
-}
+
+  $('chips').addEventListener('click', e => {
+    const b = e.target.closest('.chip');
+    if (b) toggleDate(b.dataset.date);
+  });
+
+  function pickDesk(el) {
+    if (!el) return;
+    const name = el.dataset.desk, st = statusOf(name);
+    if (st === 'mine') state.desk = null;
+    else if (st === 'free') state.desk = name;
+    state.viewing = name;
+    $('msg').textContent = '';
+    render();
+    const again = [...$('plan').querySelectorAll('.desk')].find(g => g.dataset.desk === name);
+    if (again) again.focus();
+  }
+  function closePreview() {
+    const name = state.viewing;
+    state.viewing = null;
+    render();
+    const el = [...$('plan').querySelectorAll('.desk')].find(g => g.dataset.desk === name);
+    if (el) el.focus();
+  }
+  $('pClose').addEventListener('click', closePreview);
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && state.viewing) closePreview(); });
+  $('plan').addEventListener('click', e => pickDesk(e.target.closest('.desk')));
+  $('plan').addEventListener('keydown', e => {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pickDesk(e.target.closest('.desk')); }
+  });
+
+  ['name', 'email', 'phone', 'address'].forEach(id => $(id).addEventListener('input', renderSummary));
+
+  function check(req) {
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(req.email)) return 'Check your email address. It should look like name@example.com.';
+    if (!/^[+0-9 ().\-]+$/.test(req.phone) || req.phone.replace(/\D/g, '').length < 7) return 'Add a phone number with at least 7 digits.';
+    if (req.vat && !/^[A-Za-z0-9 .\-]+$/.test(req.vat)) return 'A VAT number can only contain letters, numbers, spaces, dots and dashes.';
+    return '';
+  }
+
+  $('bookBtn').addEventListener('click', () => {
+    const req = {
+      dates: [...state.dates].sort(), desk: state.desk,
+      name: $('name').value.trim(), email: $('email').value.trim(), phone: $('phone').value.trim(),
+      company: $('company').value.trim(), address: $('address').value.trim(), vat: $('vat').value.trim()
+    };
+    const problem = check(req);
+    if (problem) { $('msg').textContent = problem; return; }
+    state.sending = true;
+    $('bookBtn').disabled = true;
+    $('bookBtn').textContent = 'Booking…';
+    $('msg').textContent = '';
+    api('book', req, showDone, err => {
+        state.sending = false;
+        $('bookBtn').textContent = 'Book desk';
+        const m = (err && err.message ? err.message : '').replace(/^(Error|Exception):\s*/, '');
+        $('msg').textContent = m || 'The booking didn’t go through. Try again in a moment.';
+        load(); // refresh which desks are free
+      });
+  });
+
+  function showDone(res) {
+    state.sending = false;
+    $('app').hidden = true;
+    const list = res.dates.map(d => `<li>${esc(fmt(d, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }))}</li>`).join('');
+    const mail = res.emailed
+      ? `A confirmation is on its way to <b>${esc(res.email)}</b>.`
+      : `Your booking is saved, but the confirmation email couldn’t be sent. Keep your reference number.`;
+    $('done').innerHTML = `<h2>You’re booked</h2>
+      <p><b>${esc(res.desk)}</b></p><ul>${list}</ul>
+      <p>${mail}</p><p>Reference: ${esc(res.id)}</p>
+      <button type="button" class="secondary" id="again">Book another desk</button>`;
+    $('done').hidden = false;
+    $('again').addEventListener('click', () => {
+      state.dates.clear(); state.desk = null;
+      $('bookBtn').textContent = 'Book desk';
+      $('done').hidden = true;
+      $('loading').hidden = false; $('loading').textContent = 'Loading free desks…';
+      load();
+    });
+    window.scrollTo(0, 0);
+  }
+
+  load();
+</script>
+</body>
+</html>
